@@ -60,7 +60,7 @@ tags = ["研究", "方法", "案例", "工具"]
 enabled = ["book"]
 
 [plugins.book]
-data_dir = "./data/book"
+data_dir = "./book"
 ```
 
 ```dotenv
