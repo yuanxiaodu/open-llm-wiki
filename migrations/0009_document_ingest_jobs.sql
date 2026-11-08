@@ -17,7 +17,7 @@
 -- chunks_done/chunks_total 是前端进度条唯一的数据源（progress 由 API 现算）。
 -- actor_id 可空：老任务/脚本没有登录用户时仍然能记录是谁发起的（NULL = 系统/脚本）。
 
-CREATE TABLE ingest_jobs (
+CREATE TABLE IF NOT EXISTS ingest_jobs (
   id            INTEGER PRIMARY KEY,
   upload_id     INTEGER NOT NULL REFERENCES upload_files(id),
   actor_id      INTEGER,
@@ -36,4 +36,4 @@ CREATE TABLE ingest_jobs (
   finished_at   TEXT
 );
 
-CREATE INDEX idx_ingest_jobs_status ON ingest_jobs(status, id);
+CREATE INDEX IF NOT EXISTS idx_ingest_jobs_status ON ingest_jobs(status, id);

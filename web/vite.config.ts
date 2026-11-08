@@ -12,12 +12,21 @@ import react from "@vitejs/plugin-react";
 // （app/static 与 main.py 的挂载一起退场），代理留着只会指向一个不存在的路径。
 const WEB_ROOT = new URL("./src", import.meta.url).pathname;
 const REPO_ROOT = new URL("..", import.meta.url).pathname;
+const NODE_MODULES = new URL("./node_modules", import.meta.url).pathname;
 
 export default defineConfig({
   plugins: [react()],
   resolve: {
-    // 插件前端放在 web/ 之外的 plugins/<id>/web/，用 @app/* 引用核心模块。
-    alias: { "@app": WEB_ROOT },
+    // 插件前端放在 web/ 之外的 plugins/<id>/web/：@app/* 引用核心模块，
+    // 裸模块（react / react-router-dom）显式指到本仓库的 web/node_modules，
+    // 否则 Rollup 从 plugins/ 往上找会找不到依赖。
+    alias: [
+      { find: "@app", replacement: WEB_ROOT },
+      { find: /^react\/jsx-runtime$/, replacement: `${NODE_MODULES}/react/jsx-runtime.js` },
+      { find: /^react\/jsx-dev-runtime$/, replacement: `${NODE_MODULES}/react/jsx-dev-runtime.js` },
+      { find: /^react$/, replacement: `${NODE_MODULES}/react/index.js` },
+      { find: /^react-router-dom$/, replacement: `${NODE_MODULES}/react-router-dom/dist/index.mjs` },
+    ],
   },
   build: {
     outDir: "dist",
