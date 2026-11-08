@@ -1,0 +1,11 @@
+[Unit]
+Description=Open LLM Wiki 全路由巡检
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/opt/open_llm_wiki
+EnvironmentFile=/opt/open_llm_wiki/.env
+ExecStart=/opt/open_llm_wiki/scripts/smoke.sh http://127.0.0.1:${PORT}
+NoNewPrivileges=true
+PrivateTmp=true

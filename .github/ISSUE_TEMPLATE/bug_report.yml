@@ -1,0 +1,39 @@
+name: Bug report
+description: 报告可复现的问题
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请先搜索已有 issue。不要粘贴 `.env`、token、用户数据或 wiki 私有内容。
+  - type: textarea
+    id: what
+    attributes:
+      label: 发生了什么
+      description: 实际行为与期望行为
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1. ...
+        2. ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: 版本 / commit
+      placeholder: v0.1.0 或 commit sha
+  - type: textarea
+    id: env
+    attributes:
+      label: 环境
+      placeholder: OS、Python、Node、pnpm、浏览器、部署方式
+  - type: textarea
+    id: logs
+    attributes:
+      label: 相关日志
+      description: 请先脱敏

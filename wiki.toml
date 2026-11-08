@@ -1,0 +1,83 @@
+# Open LLM Wiki — the wiki's identity and editorial policy.
+#
+# This file is tracked by the *project* repository. It is not the wiki vault:
+# the vault is a separate Git repository at WIKI_DIR (default DATA_DIR/wiki),
+# created by `python -m app.cli seed`.
+#
+# Edit this file and restart to change the site name, domain statement, tag
+# taxonomy, page-type labels, agent persona, long-document ingest prompt or the
+# chat welcome cards. SCHEMA.md in the wiki vault is generated from this file;
+# do not edit it by hand.
+#
+# No secrets belong here. Credentials live in .env.
+
+[site]
+name = "知识库"
+description = "一个由 AI 维护、可自托管的个人知识库"
+
+[wiki]
+domain = "示例知识库：记录项目资料、研究笔记与决策依据。事实句要有出处，页面之间用 wikilink 连成网。"
+extra_rules = """
+- 每条事实尽量给出 sources。
+- 不确定的内容标成待审。
+"""
+
+[wiki.taxonomy]
+tags = ["概念", "方法", "案例", "工具", "人物", "组织", "研究", "其他"]
+
+[wiki.type_labels]
+entity = "实体"
+concept = "概念"
+comparison = "对比"
+query = "查询"
+summary = "摘要"
+
+[agent]
+persona = "你是这个知识库唯一的维护智能体。说话短，先查再写。"
+rules = """
+- 先 search 再写页。
+"""
+
+# [ingest]
+# system_prompt 可选；不写就用内置模板（引用 site.name 与 wiki.domain）。
+
+[[ui.build_actions]]
+key = "ask"
+icon = "🔍"
+title = "问知识库"
+example = "这个知识库主要记录什么？"
+
+[[ui.build_actions]]
+key = "feed"
+icon = "📄"
+title = "整理一份资料"
+example = "把 PDF 拖进来，自动整理成页"
+
+[[ui.build_actions]]
+key = "lint"
+icon = "🩺"
+title = "体检知识库"
+example = "查断链、重复页、过期页"
+
+[[ui.readonly_actions]]
+key = "ask"
+icon = "🔍"
+title = "问知识库"
+example = "这个知识库主要记录什么？"
+
+[[ui.readonly_actions]]
+key = "find"
+icon = "🗂️"
+title = "找已有内容"
+example = "知识库里有哪些讲这个主题的页面？"
+
+[[ui.readonly_actions]]
+key = "digest"
+icon = "📌"
+title = "划个重点"
+example = "把这个主题的关键内容梳理一下"
+
+# Plugins are opt-in. Add an id here after installing a plugin package under
+# plugins/<id>/; the SPA discovers its frontend entry at build time.
+[plugins]
+enabled = []

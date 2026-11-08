@@ -1,0 +1,9 @@
+[Unit]
+Description=每 10 分钟巡检一次 Open LLM Wiki
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=10min
+
+[Install]
+WantedBy=timers.target

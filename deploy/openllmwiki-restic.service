@@ -1,0 +1,15 @@
+[Unit]
+Description=Open LLM Wiki restic 备份（data/ 整目录，含 wiki git 仓库）
+Documentation=https://restic.readthedocs.io/
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+EnvironmentFile=/etc/openllmwiki/backup.env
+ExecStart=/opt/open_llm_wiki/scripts/restic_backup.sh
+Nice=10
+# 备份失败要能从 systemctl --failed / journalctl 看见，不要静默
+StandardOutput=journal
+StandardError=journal

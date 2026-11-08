@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- 不把 Referer 发出去。这个站的 URL 里会出现邀请 token（/i/:token），一旦带上
+         Referer，任何外链（材料里的图片、将来可能加的字体或统计）都能顺手把那条邀请
+         链接收走——而邀请链接一人一条、点开即注册。全站取数都是同源的 /api/*，
+         一个字节都不需要 Referer。 -->
+    <meta name="referrer" content="no-referrer" />
+    <!-- 图标走内联 SVG data URI，于是浏览器不再去请求 /favicon.ico：那条请求会落进
+         app/main.py 的 SPA 回退，拿回一整页 index.html 当图标（浏览器只会忽略它），
+         access log 里平白多一行、每次冷启动多一次往返。不新增文件，deploy 的 rsync
+         清单与 /assets 挂载都不用动。 -->
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230f766e'/%3E%3Cpath d='M8 11a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-6l-4.5 3.6V20H10a2 2 0 0 1-2-2z' fill='%23fff'/%3E%3C/svg%3E"
+    />
+    <title>Open LLM Wiki</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

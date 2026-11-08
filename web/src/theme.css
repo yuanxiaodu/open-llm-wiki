@@ -1,0 +1,2026 @@
+/* 方向 B「对话面」令牌 + 基础件。
+ *
+ * 值逐条抄自 docs/superpowers/design/ui-directions.html 的 .dir-b-chat：
+ * 浅色 sans、12px 圆角、teal #0f766e 主色、纸白面板。登录/注册页不在那份
+ * mock 里，但沿用同一套令牌（卡片 = panel + line + radius，按钮 = .btn/.btn.pri），
+ * 保证进对话页时观感连续。
+ *
+ * 命名规则：--bg/--panel/--panel2/--line/--text/--muted/--accent/--accent2/
+ * --bubble/--radius 与 mock 一一对应；warn/err/danger 是 mock 没有、但横幅和
+ * 表单校验必须有的语义色（SSE 适配层约定 system → 琥珀 warn、error → 红 err）。
+ * Task 5 的对话页（气泡/工具卡/composer）直接续用这些变量，不要再发明一套。
+ */
+
+:root {
+  color-scheme: light;
+
+  /* 方向 B 对话令牌（mock .dir-b-chat 原值） */
+  --bg: #fafaf9;
+  --panel: #ffffff;
+  --panel2: #f5f5f4;
+  --line: #e7e5e4;
+  --text: #1c1917;
+  --muted: #78716c;
+  --accent: #0f766e;
+  --accent2: #475569;
+  --bubble: #f5f5f4;
+  --radius: 12px;
+
+  /* 语义补充（mock 没有，横幅/校验需要） */
+  --warn-bg: #fef3c7;
+  --warn-line: #fcd34d;
+  --warn-text: #92400e;
+  --err-bg: #fee2e2;
+  --err-line: #fca5a5;
+  --err-text: #991b1b;
+  --danger: #b91c1c;
+
+  --font: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 整页只有 .shell 一个全屏容器，滚动一律发生在它内部的滚动区里。
+ * 2026-10-30 用户报"滚轮到底/鼠标停在页面底部时整页向上滚、露出空白"：
+ * 那是外层滚到底后的 overscroll 链到 document，Safari 会把它演成橡皮筋——
+ * 内容被整块拖走，背后就是白纸。两道闸：别让内部滚动区把余量传给外层；
+ * 壳子存在的页面（除登录页外全部）把 document 自己的滚动关死。 */
+html,
+body {
+  overscroll-behavior: none;
+}
+
+body:has(.shell) {
+  overflow: hidden;
+}
+
+.stream,
+.sb,
+.shell-context,
+.vault-scroll,
+.paper-page,
+.tool .tbody {
+  overscroll-behavior: contain;
+}
+
+/* ---------- 锚点 ----------
+ * 浏览器默认那套蓝（#0000ee / 访问过 #551a8b）跟方向 B 的墨绿主色完全不在一个调子上，
+ * 而登录/注册页的「去登录」与正文里的引注都是真 <a>。这里一次性收编：全站锚点用
+ * --accent，hover/focus 换 --accent2 并加下划线，:visited **不变色**——这个站里的链接
+ * 全是"去某个页面"的动作，不是"读过的外链"，把它们染成紫色只会让人以为点过了没用。
+ *
+ * 放在文件最前面是有意的：下面 .chip / .md a / .sb .foot .link 都有自己的颜色，
+ * 同权重时后写的赢，所以这些局部规则照旧生效（附件胶囊不会跟着变绿）。
+ */
+
+a {
+  color: var(--accent);
+}
+
+a:visited {
+  color: var(--accent);
+}
+
+a:hover,
+a:focus-visible {
+  color: var(--accent2);
+  text-decoration: underline;
+}
+
+/* ---------- 按钮 ---------- */
+
+.btn {
+  font: inherit;
+  font-size: 13px;
+  padding: 7px 16px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: var(--panel2);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.btn:hover {
+  border-color: var(--muted);
+}
+
+.btn.pri {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.btn.pri:hover {
+  background: #0d6560;
+  border-color: #0d6560;
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* ---------- 输入 ---------- */
+
+.input {
+  font: inherit;
+  font-size: 14px;
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--text);
+}
+
+.input::placeholder {
+  color: var(--muted);
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.12);
+}
+
+.input[readonly] {
+  background: var(--panel2);
+  color: var(--muted);
+  cursor: default;
+}
+
+/* ---------- 横幅（warn = system 琥珀，err = 人话错误红） ---------- */
+
+.banner {
+  padding: 9px 13px;
+  border-radius: var(--radius);
+  font-size: 13px;
+  line-height: 1.6;
+  border: 1px solid transparent;
+}
+
+.banner.warn {
+  background: var(--warn-bg);
+  border-color: var(--warn-line);
+  color: var(--warn-text);
+}
+
+.banner.err {
+  background: var(--err-bg);
+  border-color: var(--err-line);
+  color: var(--err-text);
+}
+
+/* info：不是好也不是坏，只是"这儿有条你知道一下的事"（登录页那条"你还登着"）。
+ * 用主色的极淡底，与 .pill.on 同一个调子。 */
+.banner.info {
+  background: rgba(15, 118, 110, 0.06);
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+/* ---------- 卡片 ---------- */
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 24px;
+}
+
+/* ---------- 胶囊 / 状态签 ---------- */
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line);
+  background: var(--panel2);
+  border-radius: 999px;
+  padding: 3px 12px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.pill.on {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(15, 118, 110, 0.06);
+}
+
+/* confidence 三档（2026-10-31 体检）：high 走主色、medium 保持默认中性、low 走警戒色。 */
+.pill.conf-high {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(15, 118, 110, 0.06);
+}
+
+.pill.conf-low {
+  border-color: var(--warn-line);
+  color: var(--warn-text);
+  background: var(--warn-bg);
+}
+
+.pill.err {
+  border-color: var(--err-line);
+  color: var(--err-text);
+  background: var(--err-bg);
+}
+
+/* ---------- 认证页共用骨架（登录/注册：纸白卡片居中） ---------- */
+
+.auth-page {
+  min-height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  background: var(--bg);
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 380px;
+}
+
+.auth-card h1 {
+  font-size: 19px;
+  margin: 0 0 4px;
+}
+
+.auth-card .sub {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 0 0 20px;
+}
+
+.auth-card .field {
+  margin-bottom: 14px;
+}
+
+.auth-card .field label {
+  display: block;
+  font-size: 12.5px;
+  color: var(--muted);
+  margin-bottom: 5px;
+}
+
+.auth-card .banner {
+  margin-bottom: 14px;
+}
+
+/* 表单里的一句人话提示（"两次输入的密码不一样"）。与 .modal .tip 同一副样子，
+ * 只是挂在认证页的字段下面。 */
+.auth-card .tip {
+  font-size: 12px;
+  color: var(--err-text);
+  margin-top: 5px;
+}
+
+/* 横幅里那条"已登录？进入对话"的捷径：与横幅正文分开一点，看得出是能点的 */
+.auth-card .banner .shortcut {
+  margin-left: 8px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.auth-card .btn.pri {
+  width: 100%;
+  padding: 10px 16px;
+  font-size: 14px;
+}
+
+.auth-card .foot {
+  margin-top: 16px;
+  font-size: 12px;
+  color: var(--muted);
+  text-align: center;
+}
+
+/* ---------- 对话页（方向 B 样张的「对话」页：侧栏 250px + 流 + composer） ---------- */
+
+.chat {
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr);
+  height: 100%;
+  overflow: hidden;
+}
+
+/* 窄屏抽屉的遮罩：宽屏压根不显示（Chat 只在 drawer 打开时渲染它） */
+.scrim {
+  display: none;
+}
+
+/* ---------- 侧栏 ---------- */
+
+.sb {
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+  padding: 14px 10px;
+  overflow: auto;
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.sb .brand {
+  font-weight: 700;
+  font-size: 15px;
+  padding: 2px 8px;
+}
+
+.sb .brand small {
+  display: block;
+  font-weight: 400;
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.newbtn {
+  margin: 10px 8px 0;
+  display: block;
+  width: calc(100% - 16px);
+  text-align: center;
+  padding: 7px 0;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.newbtn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.newbtn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.sb-empty {
+  margin: 14px 8px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.grp {
+  margin: 16px 8px 6px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.item {
+  padding: 5px 8px;
+  border-radius: var(--radius);
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.item:hover {
+  background: var(--panel2);
+}
+
+.item.on {
+  background: var(--panel2);
+}
+
+.item.archived .t {
+  color: var(--muted);
+}
+
+.item .t {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+  font: inherit;
+  background: none;
+  border: none;
+  padding: 2px 0;
+  color: inherit;
+  cursor: pointer;
+}
+
+.item.on .t {
+  font-weight: 600;
+}
+
+.pill.mini {
+  flex: none;
+  padding: 1px 8px;
+  font-size: 11px;
+}
+
+.more {
+  flex: none;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 6px;
+  cursor: pointer;
+  opacity: 0.5;
+}
+
+.item:hover .more,
+.more:focus-visible,
+.more[aria-expanded="true"] {
+  opacity: 1;
+}
+
+.more:hover {
+  background: var(--line);
+  color: var(--text);
+}
+
+.menu-wrap {
+  position: relative;
+  flex: none;
+}
+
+.menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 20;
+  min-width: 108px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(28, 25, 23, 0.12);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+}
+
+.menu button {
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  padding: 6px 9px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.menu button:hover {
+  background: var(--panel2);
+}
+
+.sb .foot {
+  margin-top: auto;
+  padding: 10px 8px 2px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.sb .foot .me {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.link {
+  font: inherit;
+  font-size: 12px;
+  border: none;
+  background: none;
+  color: var(--accent);
+  cursor: pointer;
+  padding: 0;
+  margin-left: auto;
+  flex: none;
+}
+
+.link:hover {
+  text-decoration: underline;
+}
+
+/* ---------- 主栏 ---------- */
+
+.main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--bg);
+}
+
+.head {
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  background: var(--panel);
+  flex-wrap: wrap;
+}
+
+.head .h1 {
+  font-size: 15px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 40%;
+}
+
+.head .meta {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.head .pill {
+  flex: none;
+  padding: 2px 10px;
+  font-size: 11.5px;
+}
+
+.head .pill.mock {
+  border-color: var(--warn-line);
+  color: var(--warn-text);
+  background: var(--warn-bg);
+}
+
+.btn.icon {
+  display: none;
+  padding: 5px 9px;
+  line-height: 1;
+}
+
+.stream {
+  flex: 1 1 auto;
+  overflow: auto;
+  padding: 20px 24px;
+  min-height: 0;
+}
+
+.empty,
+.welcome {
+  color: var(--muted);
+  font-size: 13.5px;
+}
+
+.welcome {
+  max-width: 460px;
+  margin: 40px auto;
+  text-align: center;
+}
+
+.welcome h2 {
+  font-size: 18px;
+  color: var(--text);
+  margin: 0 0 8px;
+}
+
+.welcome p {
+  margin: 0 0 18px;
+  line-height: 1.8;
+}
+
+.notices {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 4px 0 16px;
+  max-width: 860px;
+}
+
+.notices .banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.notices .banner .x {
+  margin-left: auto;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 15px;
+  line-height: 1.2;
+  cursor: pointer;
+  color: inherit;
+  opacity: 0.6;
+  padding: 0 2px;
+}
+
+.notices .banner .x:hover {
+  opacity: 1;
+}
+
+/* ---------- 「重发」（裁定 R-S3-13） ----------
+ * 两个位置共用这一件：半截断掉的回合（消息正文之后）与 stream_timeout 的页面级横幅里。
+ * 不用 .btn 那套底色——横幅与消息各有各的底色，再压一块灰面板上去像贴了张膏药；改用
+ * currentColor 的一条描边，看着像这句话的一部分。它是真 <button> 不是链接：点了不发生
+ * 导航，只把那一轮的原文放回输入框（不自动发送）。 */
+.resend {
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.6;
+  padding: 0 9px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.78;
+  flex: none;
+}
+
+.resend:hover {
+  opacity: 1;
+}
+
+.resend:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  opacity: 1;
+}
+
+/* 挂在消息正文之后的那一个（横幅里那个由 .notices .banner 的 flex + gap 排布，不额外加边距）。
+ * 灰一点：它是这一轮的收尾动作，不该比正文抢眼睛。 */
+.msg.agent .resend {
+  margin-top: 8px;
+  color: var(--muted);
+}
+
+/* ---------- 消息 ---------- */
+
+.msg {
+  margin-bottom: 18px;
+  max-width: 860px;
+}
+
+.msg.user {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.msg.user .b {
+  background: var(--bubble);
+  border: 1px solid var(--line);
+  padding: 9px 13px;
+  border-radius: var(--radius);
+  font-size: 14px;
+  line-height: 1.65;
+  max-width: 70%;
+  min-width: 0;
+}
+
+.msg.user .who-user {
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-bottom: 3px;
+  text-align: right;
+}
+
+.msg.user .text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.msg.agent .who {
+  font-size: 12px;
+  color: var(--accent);
+  font-weight: 600;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.msg.agent .who .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex: none;
+}
+
+.msg.agent .who .pill {
+  padding: 1px 9px;
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.pill.cut {
+  border-color: var(--warn-line);
+  background: var(--warn-bg);
+  color: var(--warn-text);
+}
+
+.msg.agent .body {
+  font-size: 14.5px;
+  line-height: 1.75;
+}
+
+.caret {
+  display: inline-block;
+  width: 7px;
+  height: 15px;
+  background: var(--accent);
+  vertical-align: -2px;
+  animation: bl 1s steps(1) infinite;
+}
+
+@keyframes bl {
+  50% {
+    opacity: 0;
+  }
+}
+
+/* 正文里的 markdown（streamdown 出的 HTML；不引 Tailwind，样式在这儿自己给） */
+.md {
+  min-width: 0;
+}
+
+.md > * + * {
+  margin-top: 8px;
+}
+
+.md h1,
+.md h2,
+.md h3,
+.md h4,
+.md h5,
+.md h6 {
+  font-size: 14.5px;
+  margin: 12px 0 4px;
+  line-height: 1.6;
+}
+
+.md p {
+  margin: 6px 0;
+}
+
+.md ul,
+.md ol {
+  margin: 6px 0;
+  padding-left: 22px;
+}
+
+.md li {
+  margin: 3px 0;
+}
+
+.md a {
+  color: var(--accent);
+}
+
+/* 正文里的链接跟全局锚点一个调子：visited 不变色，hover 换次强调色。
+ * 这三条写在 .md 下是为了压过文件头那组全局 a 规则的权重。 */
+.md a:visited {
+  color: var(--accent);
+}
+
+.md a:hover,
+.md a:focus-visible {
+  color: var(--accent2);
+}
+
+.md sup {
+  color: var(--accent2);
+  font-size: 11px;
+}
+
+.md blockquote {
+  border-left: 3px solid var(--accent);
+  margin: 10px 0;
+  padding: 2px 14px;
+  color: var(--muted);
+}
+
+.md code {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 1px 4px;
+}
+
+.md pre {
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  overflow: auto;
+  margin: 8px 0;
+}
+
+.md pre code {
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+.md table {
+  border-collapse: collapse;
+  margin: 10px 0;
+  font-size: 13.5px;
+  display: block;
+  overflow: auto;
+  max-width: 100%;
+}
+
+.md th,
+.md td {
+  border: 1px solid var(--line);
+  padding: 5px 10px;
+  text-align: left;
+}
+
+.md th {
+  background: var(--panel2);
+}
+
+.md hr {
+  border: none;
+  border-top: 1px solid var(--line);
+  margin: 12px 0;
+}
+
+/* ---------- 工具卡片 ---------- */
+
+.tool {
+  border: 1px solid var(--line);
+  background: var(--panel2);
+  border-radius: var(--radius);
+  margin: 8px 0 12px;
+  font-size: 12.5px;
+  overflow: hidden;
+  max-width: 640px;
+}
+
+.tool.fail {
+  border-color: var(--err-line);
+  background: var(--err-bg);
+}
+
+.tool .tr {
+  width: 100%;
+  padding: 7px 11px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.tool .tr:hover {
+  background: rgba(28, 25, 23, 0.04);
+}
+
+.tool .tr .nm {
+  color: var(--accent2);
+  font-family: var(--mono);
+  flex: none;
+}
+
+.tool .tr .pv {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.tool .tr .mark {
+  flex: none;
+  color: var(--accent);
+}
+
+.tool.fail .mark {
+  color: var(--err-text);
+}
+
+.tool.run .mark {
+  color: var(--muted);
+}
+
+.tool .tr .chev {
+  margin-left: auto;
+  flex: none;
+}
+
+.tool .tbody {
+  border-top: 1px solid var(--line);
+}
+
+.tool.fail .tbody {
+  border-top-color: var(--err-line);
+}
+
+.tool .args {
+  margin: 0;
+  padding: 8px 11px;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--panel);
+}
+
+.tool .tres {
+  padding: 7px 11px;
+  color: var(--muted);
+  display: flex;
+  gap: 7px;
+  align-items: flex-start;
+  background: var(--panel);
+}
+
+.tool .tres + .tres,
+.tool .args + .tres {
+  border-top: 1px solid var(--line);
+}
+
+.tool .tres.fail {
+  color: var(--err-text);
+}
+
+/* ---------- 附件胶囊 ---------- */
+
+/* 2026-10-30 起附件胶囊只展示状态、不再是下载链接（`a.chip` 那一份已随之删除）。 */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  border-radius: 999px;
+  padding: 4px 12px 4px 6px;
+  font-size: 12.5px;
+  color: var(--text);
+  max-width: 100%;
+}
+
+.chip .ic {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: var(--accent2);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  flex: none;
+}
+
+.chip .nm {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.chip .sz,
+.chip .st {
+  color: var(--muted);
+  font-size: 11px;
+  flex: none;
+}
+
+.chip .st {
+  border-left: 1px solid var(--line);
+  padding-left: 7px;
+}
+
+.chip.st-failed .st {
+  color: var(--err-text);
+}
+
+/* 「含 N 页图片，未入检索」（spec §7）：与 .st 同一档语气（灰、小一号、竖线隔开），
+ * 但**允许换行**——胶囊是个 pill，这句话比文件名长，不许它把胶囊撑出屏幕去。 */
+.chip .img-only {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+  border-left: 1px solid var(--line);
+  padding-left: 7px;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+/* ---------- 输入区 ---------- */
+
+.composer {
+  border-top: 1px solid var(--line);
+  padding: 12px 24px 14px;
+  background: var(--panel);
+  flex: none;
+}
+
+.composer .box {
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.6;
+  width: 100%;
+  display: block;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text);
+  padding: 10px 12px;
+  min-height: 44px;
+  max-height: 200px;
+  resize: none;
+  overflow: auto;
+}
+
+.composer .box:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.12);
+}
+
+.composer .box:disabled {
+  background: var(--panel2);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.composer .row {
+  display: flex;
+  gap: 8px;
+  margin-top: 9px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.composer .hint {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--muted);
+  text-align: right;
+}
+
+.composer .hint.bad {
+  color: var(--err-text);
+}
+
+.composer.off .hint {
+  color: var(--warn-text);
+}
+
+/* ---------- 弹窗 ---------- */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgba(28, 25, 23, 0.32);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.modal {
+  width: min(420px, 100%);
+  padding: 20px;
+  box-shadow: 0 18px 48px rgba(28, 25, 23, 0.24);
+}
+
+.modal h2 {
+  font-size: 16px;
+  margin: 0 0 4px;
+}
+
+.modal .sub {
+  font-size: 12.5px;
+  color: var(--muted);
+  margin: 0 0 14px;
+  overflow-wrap: anywhere;
+}
+
+.modal .banner {
+  margin-bottom: 12px;
+}
+
+.modal .consequence {
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-line);
+  color: var(--warn-text);
+  border-radius: var(--radius);
+  padding: 9px 12px;
+  font-size: 13px;
+  margin: 0 0 16px;
+}
+
+.modal .count {
+  font-size: 11.5px;
+  color: var(--muted);
+  text-align: right;
+  margin-top: 5px;
+}
+
+.modal .tip {
+  font-size: 12px;
+  color: var(--err-text);
+  margin-top: 5px;
+}
+
+.modal .acts {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+.btn.danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+
+.btn.danger:hover:not(:disabled) {
+  background: #a3181c;
+  border-color: #a3181c;
+}
+
+/* ---------- 只给读屏软件看的 ---------- */
+
+.sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* 文件 input 藏起来，用「附件」按钮代它说话（display:none 会让部分浏览器不触发 click） */
+.sr-file {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ---------- 窄屏（390px）：侧栏收成抽屉，单栏 ---------- */
+
+/* ---------- 对话页 DeepSeek 式工作区（S8 UI 升级） ----------
+ *
+ * 这一整块只作用于对话面（.chat / .app-shell-chat），不改vault 面的纸本令牌。
+ * 放在 700px 媒体查询**之前**：窄屏那段是 shell.test.ts 钉死的抽屉纪律，一个字不动；
+ * 这里只写宽屏形态，窄屏仍由下面那段接管 padding/抽屉。
+ */
+
+.app-shell-chat {
+  background: #ffffff;
+}
+
+.chat {
+  --chat-bg: #ffffff;
+  --chat-side: #f9f9f9;
+  --chat-line: #ececec;
+  --chat-ink: #1f1f1f;
+  --chat-muted: #8a8a8a;
+  --chat-bubble: #f3f3f3;
+  --chat-primary: #2f2f2f;
+  --chat-radius: 14px;
+  grid-template-columns: 260px minmax(0, 1fr);
+  background: var(--chat-bg);
+  color: var(--chat-ink);
+}
+
+/* ---------- 侧栏 ---------- */
+
+.chat .sb {
+  background: var(--chat-side);
+  border-right: 1px solid var(--chat-line);
+  padding: 16px 10px 10px;
+  font-size: 13px;
+}
+
+.chat .sb .brand {
+  padding: 2px 8px 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--chat-ink);
+}
+
+.chat .sb .brand small {
+  margin-top: 3px;
+  color: var(--chat-muted);
+  font-size: 11px;
+}
+
+.chat .newbtn {
+  margin: 14px 6px 6px;
+  width: calc(100% - 12px);
+  padding: 9px 0;
+  border: none;
+  border-radius: 12px;
+  background: var(--chat-primary);
+  color: #ffffff;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.chat .newbtn:hover:not(:disabled) {
+  background: #1a1a1a;
+  border: none;
+  color: #ffffff;
+}
+
+.chat .newbtn:disabled {
+  background: #d8d8d8;
+  color: #ffffff;
+}
+
+.chat .sb-empty {
+  color: var(--chat-muted);
+  font-size: 12.5px;
+}
+
+.chat .grp {
+  margin: 18px 8px 6px;
+  color: var(--chat-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.chat .item {
+  padding: 6px 8px;
+  border-radius: 10px;
+  color: var(--chat-ink);
+  font-size: 13px;
+}
+
+.chat .item:hover {
+  background: #efefef;
+}
+
+.chat .item.on {
+  background: #e9e9e9;
+}
+
+.chat .item .t {
+  font-size: 13px;
+}
+
+.chat .sb .foot {
+  margin-top: 0;
+  padding: 8px 8px 2px;
+  border-top: none;
+  color: var(--chat-muted);
+  font-size: 12px;
+}
+
+/* 侧栏底部的模块入口（对话页没有全局顶栏，这些是唯一的跨模块导航） */
+.chat .sb-modules {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  margin-top: auto;
+  padding: 12px 6px 8px;
+  border-top: 1px solid var(--chat-line);
+}
+
+.chat .sb-modules a {
+  display: block;
+  padding: 6px 4px;
+  border-radius: 8px;
+  color: #555555;
+  font-size: 12px;
+  text-align: center;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.chat .sb-modules a:hover,
+.chat .sb-modules a:focus-visible {
+  background: #efefef;
+  color: var(--chat-ink);
+  text-decoration: none;
+}
+
+/* ---------- 主区 ---------- */
+
+.chat .main {
+  background: var(--chat-bg);
+  min-width: 0;
+}
+
+.chat .head {
+  flex: none;
+  height: 56px;
+  padding: 0 20px;
+  gap: 10px;
+  /* 与左侧品牌行同高、垂直居中：之前继承 .head 的 baseline，标题会贴顶 */
+  align-items: center;
+  border-bottom: 1px solid var(--chat-line);
+  background: var(--chat-bg);
+}
+
+.chat .head .h1 {
+  line-height: 1.2;
+}
+
+.chat .head .h1 {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: none;
+  color: var(--chat-ink);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.chat .head .meta {
+  display: none;
+}
+
+.chat .head .pill {
+  padding: 1px 9px;
+  border-color: var(--chat-line);
+  background: #f5f5f5;
+  color: #666666;
+  font-size: 11px;
+}
+
+.chat .head-more {
+  opacity: 1;
+  font-size: 16px;
+  padding: 2px 7px;
+  border-radius: 8px;
+  color: #666666;
+}
+
+.chat .head-more:hover {
+  background: #f1f1f1;
+}
+
+/* 会话栏的 ⋯ 永远贴在标题右边（窄屏旧规则给 .h1 设了 order:2，这里得跟上） */
+.chat .head-menu-wrap {
+  order: 5;
+  flex: none;
+  margin-left: 4px;
+}
+
+.chat .tool .tr .lab {
+  flex: none;
+  white-space: nowrap;
+}
+
+.chat .stream {
+  padding: 24px 24px 8px;
+}
+
+.chat .msg {
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto 24px;
+}
+
+/* 用户：右对齐浅灰气泡，附件胶囊在气泡下面 */
+.chat .msg.user {
+  justify-content: flex-end;
+}
+
+.chat .msg.user .user-col {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  max-width: 78%;
+  min-width: 0;
+}
+
+.chat .msg.user .who-user {
+  margin-bottom: 4px;
+  color: var(--chat-muted);
+  font-size: 11.5px;
+  text-align: right;
+}
+
+.chat .msg.user .b {
+  max-width: 100%;
+  padding: 10px 14px;
+  border: none;
+  border-radius: 16px;
+  background: var(--chat-bubble);
+  color: var(--chat-ink);
+  font-size: 14.5px;
+  line-height: 1.7;
+}
+
+.chat .msg.user .text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.chat .msg.user .chips {
+  justify-content: flex-end;
+  margin-top: 6px;
+}
+
+/* 智能体：无气泡、通栏正文，左侧圆点 + 小字 */
+.chat .msg.agent .who {
+  margin-bottom: 7px;
+  color: var(--chat-ink);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.chat .msg.agent .who .dot {
+  width: 6px;
+  height: 6px;
+  background: var(--chat-primary);
+}
+
+.chat .msg.agent .body {
+  color: var(--chat-ink);
+  font-size: 15px;
+  line-height: 1.85;
+}
+
+.chat .pill.on {
+  border-color: var(--chat-line);
+  background: #f3f3f3;
+  color: #666666;
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.chat .msg.agent .body .md > * + * {
+  margin-top: 10px;
+}
+
+.chat .tool {
+  border-color: var(--chat-line);
+  border-radius: 12px;
+  background: #fafafa;
+}
+
+.chat .tool .tr {
+  color: #666666;
+}
+
+.chat .tool .args {
+  background: #ffffff;
+}
+
+.chat .tool .tres {
+  background: #ffffff;
+}
+
+.chat .notices {
+  max-width: 760px;
+  margin: 0 auto 14px;
+}
+
+/* 对话面的键盘焦点统一用深灰环（浏览器默认蓝环跟这套浅色界面不搭） */
+.chat :focus-visible {
+  outline: 2px solid var(--chat-primary);
+  outline-offset: 2px;
+}
+
+.chat .composer-card:focus-within {
+  border-color: #cfcfcf;
+  box-shadow: 0 2px 14px rgba(0, 0, 0, 0.08);
+}
+
+.chat .notices.top {
+  margin: 0 auto 20px;
+}
+
+/* 空态欢迎块 */
+.chat .welcome.chat-welcome {
+  max-width: 680px;
+  margin: 9vh auto 0;
+  padding: 0 8px;
+  text-align: center;
+}
+
+.chat .welcome.chat-welcome h2 {
+  margin: 0 0 10px;
+  color: var(--chat-ink);
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.chat .welcome.chat-welcome p {
+  margin: 0 auto;
+  max-width: 520px;
+  color: #666666;
+  font-size: 14.5px;
+  line-height: 1.9;
+}
+
+.chat .welcome-new {
+  margin-top: 26px;
+}
+
+/* ---------- 输入区：悬浮圆角卡片 ---------- */
+
+.chat .composer {
+  flex: none;
+  padding: 8px 24px 16px;
+  border-top: none;
+  background: transparent;
+}
+
+.chat .composer-card {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 10px 12px 8px;
+  border: 1px solid var(--chat-line);
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+}
+
+.chat .composer .box {
+  width: 100%;
+  min-height: 26px;
+  max-height: 200px;
+  padding: 3px 4px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--chat-ink);
+  font-size: 15px;
+  line-height: 1.65;
+  resize: none;
+}
+
+.chat .composer .box:focus {
+  outline: none;
+  border: none;
+  box-shadow: none;
+}
+
+.chat .composer .box:disabled {
+  background: transparent;
+  color: var(--chat-muted);
+}
+
+.chat .composer .row {
+  gap: 8px;
+  margin-top: 4px;
+}
+
+/* 附件 / 发送：两颗圆形图标按钮 */
+.chat .composer .attach-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: #555555;
+}
+
+.chat .composer .attach-btn:hover:not(:disabled) {
+  background: #f3f3f3;
+}
+
+.chat .composer .paperclip {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.chat .composer .send-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--chat-primary);
+  color: #ffffff;
+}
+
+.chat .composer .send-btn:hover:not(:disabled) {
+  background: #1a1a1a;
+}
+
+.chat .composer .send-btn:disabled {
+  background: #d9d9d9;
+  color: #ffffff;
+}
+
+.chat .composer .send-arrow {
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.chat .composer .hint {
+  color: var(--chat-muted);
+  font-size: 12px;
+}
+
+/* 两段式附件：暂存 chip 在输入框上方，发送后才清 */
+.chat .composer-staged {
+  margin: 0 0 8px;
+}
+
+.chat .composer-staged .chip {
+  max-width: 100%;
+  padding-right: 6px;
+}
+
+.chat .chip-x {
+  flex: none;
+  padding: 0 3px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--chat-muted);
+  font: inherit;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.chat .chip-x:hover {
+  background: #ececec;
+  color: var(--chat-ink);
+}
+
+/* 对话面的通用按钮（新会话/重试等）也走深灰主色 */
+.chat .btn.pri {
+  border-color: var(--chat-primary);
+  background: var(--chat-primary);
+  color: #ffffff;
+}
+
+.chat .btn.pri:hover:not(:disabled) {
+  border-color: #1a1a1a;
+  background: #1a1a1a;
+}
+
+@media (max-width: 700px) {
+  .chat {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .btn.icon {
+    display: inline-flex;
+  }
+
+  .sb {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: min(268px, 84vw);
+    z-index: 40;
+    transform: translateX(-105%);
+    transition: transform 0.18s ease;
+    box-shadow: none;
+  }
+
+  /* 关着的抽屉彻底退出 Tab 序（S3 终审 I3）。
+   *
+   * transform 只是把它挪到画布外，**它还在可聚焦的树里**：窄屏上按 Tab 会一路走进这个
+   * 看不见的抽屉，焦点环消失、读屏念的是屏幕上没有的条目，得连按十几次才回到页面。
+   * visibility: hidden 是这里唯一合用的属性——display: none 不参与过渡（开合会变成硬切），
+   * inert 要 JS 跟着状态改（这一条只想动 CSS）。
+   *
+   * 两个方向的 visibility 时长**故意不一样**，靠的是"过渡取变更后那一套 transition 属性"：
+   *   开（加上 .open）→ visibility 0s，立刻可见。这一下是承重的：SessionList 的抽屉 effect
+   *     在 React 提交后**同步**调 focus()，那一刻过渡还没起步、算出来的仍是 hidden，
+   *     浏览器会拒收焦点，「＋ 新会话」拿不到它，键盘用户被扔回 body。
+   *   关（去掉 .open）→ visibility 延迟 0.18s，等 transform 滑完再隐，收起动画照旧看得见。
+   * 两条都重述了 transform 的时长，因为 transition 是简写、不重述就把上面那条冲掉了。
+   *
+   * 宽屏（>700px）压根不进这个 media query：侧栏常驻可见，一条 visibility 都不挂。 */
+  .sb:not(.open) {
+    visibility: hidden;
+    transition: transform 0.18s ease, visibility 0s linear 0.18s;
+  }
+
+  .sb.open {
+    transform: none;
+    visibility: visible;
+    transition: transform 0.18s ease, visibility 0s;
+    box-shadow: 0 0 40px rgba(28, 25, 23, 0.2);
+  }
+
+  .scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+    background: rgba(28, 25, 23, 0.32);
+  }
+
+  .head {
+    padding: 10px 12px;
+    gap: 8px;
+  }
+
+  .head .h1 {
+    max-width: 100%;
+    order: 2;
+    flex: 1 1 auto;
+  }
+
+  .head .meta {
+    order: 4;
+    flex: 1 0 100%;
+  }
+
+  .stream {
+    padding: 14px 12px;
+  }
+
+  .msg.user .b {
+    max-width: 88%;
+  }
+
+  .composer {
+    padding: 10px 12px 12px;
+  }
+
+  .composer .hint {
+    margin-left: 0;
+    flex: 1 0 100%;
+    text-align: left;
+  }
+
+  .tool {
+    max-width: 100%;
+  }
+}
+
+
+/* 对话页 DeepSeek 工作区的窄屏微调（S8；只覆盖我们自己的高特异性选择器，
+ * 不碰上面那段被 shell.test.ts 钉死的抽屉纪律文本）。 */
+@media (max-width: 700px) {
+  .chat .head {
+    padding: 0 12px;
+  }
+
+  .chat .stream {
+    padding: 18px 14px 6px;
+  }
+
+  .chat .msg.user .user-col {
+    max-width: 88%;
+  }
+
+  .chat .welcome.chat-welcome {
+    margin-top: 5vh;
+  }
+
+  .chat .welcome.chat-welcome h2 {
+    font-size: 24px;
+  }
+
+  .chat .composer {
+    padding: 8px 12px 12px;
+  }
+
+  .chat .composer .hint {
+    flex: 1 0 100%;
+    margin-left: 0;
+    text-align: left;
+  }
+
+  .chat .notices {
+    max-width: 100%;
+  }
+}
+
+/* ---------- 空态三张动作卡（问 / 整理 / 体检；2026-10-30） ---------- */
+
+.chat .action-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 26px;
+}
+
+.chat .action-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 14px 16px;
+  border: 1px solid var(--chat-line);
+  border-radius: 14px;
+  background: #fafafa;
+  color: var(--chat-ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.chat .action-card:hover {
+  background: #f1f1f1;
+  border-color: #cfcfcf;
+}
+
+.chat .action-card:focus-visible {
+  outline: 2px solid var(--chat-primary);
+  outline-offset: 2px;
+}
+
+.chat .ac-icon {
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.chat .ac-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.chat .ac-example {
+  color: var(--chat-muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+@media (max-width: 700px) {
+  .chat .action-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---------- 拖拽上传 ---------- */
+
+.chat .composer {
+  position: relative;
+}
+
+.chat .drop-hint {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px dashed var(--chat-primary);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.88);
+  color: var(--chat-ink);
+  font-size: 14px;
+  pointer-events: none;
+}
+
+/* ---------- 依据页 / 阶段 pill（2026-10-30） ---------- */
+
+.chat .sources {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  color: var(--chat-muted);
+  font-size: 11.5px;
+}
+
+.chat .src-lab {
+  letter-spacing: 0.04em;
+}
+
+.chat .src-chip {
+  padding: 2px 8px;
+  border: 1px solid var(--chat-line);
+  border-radius: 999px;
+  color: var(--chat-muted);
+  text-decoration: none;
+  font-size: 11.5px;
+}
+
+.chat .src-chip:hover {
+  color: var(--chat-ink);
+  border-color: #cfcfcf;
+}
+
+/* ---------- 会话条目小字 / wiki 动作入口 / 文档边界 ---------- */
+
+/* 标题 + 小字是一列，行末的 ⋯/归档 pill 永远留在同一行（2026-10-30 修复：
+   把 .sub 直接当 .item 的 flex 子项会按标题原始宽度折行，菜单被挤到下一行）。 */
+.item .ti {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.item .ti .t {
+  flex: none;
+}
+
+.item .sub {
+  flex: none;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+/* ---------- 归档折叠区（2026-10-30） ---------- */
+
+.arch-block {
+  margin-top: 14px;
+  padding-top: 6px;
+  border-top: 1px solid var(--chat-line);
+}
+
+.arch-toggle {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--chat-muted);
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
+.arch-toggle:hover {
+  background: #efefef;
+  color: var(--chat-ink);
+}
+
+.arch-toggle:focus-visible {
+  outline: 2px solid var(--chat-primary);
+  outline-offset: 2px;
+}
+
+.arch-toggle .chev {
+  font-size: 10px;
+  line-height: 1;
+}
+
+.arch-list {
+  margin-top: 2px;
+}

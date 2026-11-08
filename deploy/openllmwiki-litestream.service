@@ -1,0 +1,31 @@
+[Unit]
+Description=Open LLM Wiki · Litestream（SQLite 持续复制到对象存储）
+Documentation=https://litestream.io/reference/config/
+# 后端起完再起（DB 通常由 openllmwiki 的 lifespan / cli seed 准备好）；DB 不在时
+# Litestream 会报错并由 Restart=always 重试，不会把整个服务带下去。
+After=network-online.target openllmwiki.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/opt/open_llm_wiki
+# 凭据与 LITESTREAM_* 都在这里；文件权限 600、属主 root（systemd 以 root 读后注入环境）。
+EnvironmentFile=/etc/openllmwiki/backup.env
+# 配置模板：deploy/litestream.yml → /etc/litestream.yml
+ExecStart=/usr/local/bin/litestream replicate -config /etc/litestream.yml
+Restart=always
+RestartSec=5
+# SIGTERM 时 Litestream 会尽量做最后一次 sync（默认上限 30s），别提前 SIGKILL
+TimeoutStopSec=45
+# 只需要读 DB + 在 data/ 旁边写 .db.sqlite3-litestream 元数据目录
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/open_llm_wiki/data
+# 日志进 journald：journalctl -u openllmwiki-litestream -f
+
+[Install]
+WantedBy=multi-user.target

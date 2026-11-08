@@ -1,0 +1,10 @@
+# restic 通过 rclone 使用阿里云 OSS（restic 没有原生 OSS 后端）
+# 安装：sudo apt-get install -y rclone
+# 复制为 /etc/openllmwiki/rclone.conf（chmod 600），填 AccessKey。
+# restic 仓库地址写：rclone:openllmwiki-oss:你的bucket/openllmwiki-restic
+[openllmwiki-oss]
+type = oss
+provider = Alibaba
+access_key_id = CHANGE_ME
+access_key_secret = CHANGE_ME
+endpoint = oss-cn-hangzhou.aliyuncs.com

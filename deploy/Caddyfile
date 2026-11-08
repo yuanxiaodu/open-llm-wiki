@@ -1,0 +1,47 @@
+# Caddy v2：TLS + 反向代理（ADR 2026-10-24 决策 1；部署步骤见 DEPLOY §17）。
+#
+# 安装与启用（服务器上）：
+#   # Ubuntu 自带源的 caddy 可能偏旧；用官方 apt 源装当前稳定版（见
+#   # https://caddyserver.com/docs/install#debian-ubuntu-raspbian），别让老版本卡在
+#   # 认不出下面 request_body 的那一步：
+#   sudo apt-get install -y caddy
+#   sudo cp deploy/Caddyfile /etc/caddy/Caddyfile
+#   sudo caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile  # 先验语法
+#   sudo systemctl reload caddy            # 改配置用 reload，不断已有连接
+#
+# 唯一的变量是 DOMAIN（Caddy 的 `{$VAR:默认值}` 语法）：
+#   DOMAIN=wiki.example.com   → 自动向 Let's Encrypt 申请/续期证书（80/443 要放行；
+#                                 域名解析先指到这台机器）。证书与续期全自动，不用 cron。
+#   不设 / 空                → 站点名退成 localhost，Caddy 用内部 CA 自签（只适合本机验收）。
+#   过渡期直接拿 IP 访问     → **不要**启用本文件：证书签不到 IP，继续 uvicorn 直连 8000
+#                              （DEPLOY §12 的过渡态就是这样）。
+#
+# 启用 Caddy 时后端只许听本机：/opt/open_llm_wiki/.env 里
+#   BIND_HOST=127.0.0.1
+#   COOKIE_SECURE=1
+#   PUBLIC_BASE_URL=https://$DOMAIN
+# 之后 8000 端口不再对外放行（ufw 只留 80/443）。
+{$DOMAIN:localhost} {
+	# 文本资源压缩。SSE 的 text/event-stream 不在 Caddy 默认可压缩类型里，不会被压；
+	# 压缩只影响 HTML/JS/CSS/JSON 一类，省的是首次加载的字节。
+	encode zstd gzip
+
+	# 上传上限 60MB。应用层 uploads.MAX_SIZE 是 50MB，这里留 20% 余量给 multipart
+	# 边界与请求头，让"文件太大"由应用层的中文 413 说话，而不是 Caddy 的英文 413。
+	# 只用 max_size；v2.10 给 request_body 新加的 set 子指令是实验特性，这里不碰。
+	request_body {
+		max_size 60MB
+	}
+
+	# SSE / 流式响应一律不缓冲：flush_interval -1 = 每次写立刻 flush 给客户端。
+	# 少了这一条，Caddy 会攒 buffer 再吐，对话页的 text-delta 会一顿一顿甚至整段
+	# 在 done 时一起出现（前端看起来像"发出去没反应"）。
+	# 本站 7 人规模，不值得为了反向代理的吞吐把缓冲调大。
+	reverse_proxy 127.0.0.1:8000 {
+		flush_interval -1
+	}
+
+	# 不开 access log（默认就是关的）：邀请 token 会以 URL 形式出现在请求里
+	# （GET /i/<token>、GET /api/invites/<token>），uvicorn 的 access log 已经记了一份；
+	# 这里再记一份只是多一处泄漏面（DEPLOY §9）。排障用 journalctl -u caddy 看错误日志。
+}

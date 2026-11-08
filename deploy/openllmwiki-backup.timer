@@ -1,0 +1,10 @@
+[Unit]
+Description=每日 04:00 备份 Open LLM Wiki
+
+[Timer]
+OnCalendar=*-*-* 04:00:00
+Persistent=true
+RandomizedDelaySec=600
+
+[Install]
+WantedBy=timers.target

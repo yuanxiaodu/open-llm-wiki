@@ -1,0 +1,151 @@
+# GitHub Actions CI（ADR 2026-10-24 决策 1）。
+#
+# 三个 job，都能在"无凭据的干净 runner"上跑完：
+#   backend    Python 3.11 + pytest（tests/conftest.py 自己设 DATA_DIR / SESSION_SECRET，
+#              不需要真实 LLM_API_KEY，也不会真的调模型）
+#   frontend   Node 22 + corepack 的 pnpm：vitest / tsc --noEmit / vite build
+#   api-types  导出 OpenAPI → 生成前端 TS 类型 → git diff 必须干净（防契约漂移）
+#
+# 有意不跑的东西：
+#   - 浏览器/CDP 手工验收（需要真实 uvicorn + Chrome）；CI 只跑单元/集成测试。
+#   - 任何部署 job、任何 secrets。PR 来自 fork 时也能全绿。
+#
+# 若这个仓库将来迁到 Gitea：把本文件拷到 .gitea/workflows/ci.yml 即可，job 定义与
+# 步骤是 Act 兼容的（setup-python / setup-node / actions/cache 在 Gitea Actions 上
+# 都有对应实现）。不另建一份 Gitea 版。
+
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+# 只读 checkout；没有部署/发布步骤，不需要写权限。
+permissions:
+  contents: read
+
+# 同一分支连推两次时取消上一趟还在跑的（省 runner，也让"最新一次"更快出结果）。
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: backend (pytest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements*.txt
+
+      # 注意：pytest 不在 requirements.txt 里，而在 requirements-dev.txt
+      # （后者第一行就是 -r requirements.txt，所以装它等于两个都装）。
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: pytest
+        run: python -m pytest -q
+
+  frontend:
+    name: frontend (vitest + tsc + build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # pnpm 的版本不写死在 workflow 里：corepack 读 web/package.json 的
+      # packageManager 字段（pnpm@11.22.0），与本地/服务器保持一致。
+      # sudo 兜底：hosted runner 的 node 目录偶尔不在 runner 用户可写范围内。
+      - name: 启用 corepack（pnpm 由 packageManager 决定）
+        run: |
+          corepack enable || sudo corepack enable
+          pnpm --version
+
+      - name: 缓存 pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/pnpm/store
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml') }}
+          restore-keys: |
+            pnpm-store-${{ runner.os }}-
+
+      - name: 安装依赖（frozen lockfile）
+        run: pnpm install --frozen-lockfile
+
+      - name: vitest
+        run: pnpm test
+
+      - name: tsc --noEmit
+        run: pnpm exec tsc --noEmit
+
+      - name: vite build
+        run: pnpm build
+
+  api-types:
+    name: api-types (OpenAPI diff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements*.txt
+
+      # 只为 import app.main 导出 schema；不跑 lifespan、不建库（见脚本 docstring）。
+      - name: 安装 Python 依赖
+        run: pip install -r requirements.txt
+
+      - name: 重新导出 OpenAPI
+        run: python scripts/export_openapi.py --out web/openapi.json
+
+      - name: 安装 Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: 启用 corepack
+        working-directory: web
+        run: |
+          corepack enable || sudo corepack enable
+          pnpm --version
+
+      - name: 安装前端依赖（frozen lockfile）
+        working-directory: web
+        run: pnpm install --frozen-lockfile
+
+      - name: 重新生成 TS 类型
+        working-directory: web
+        # web/package.json 用的是 openapi-typescript 6.x：7.x 运行时需要 TypeScript
+        # 编译器 API（typescript ^5.x），而本仓库是 TypeScript 7（原生编译器，无 JS API）。
+        # 生成物形状两者一致，见 scripts/export_openapi.py 末尾的版本说明。
+        run: pnpm gen:api
+
+      # 两个生成物都必须是"重新跑一遍也不变"的：openapi.json 漂 = 后端路由/模型变了；
+      # api-types.gen.ts 漂 = 类型文件没跟着更新。任一不干净都说明有人改完后端没提交生成物。
+      - name: 契约漂移检查
+        run: |
+          if ! git diff --exit-code -- web/openapi.json web/src/api-types.gen.ts; then
+            echo "::error::OpenAPI 或前端类型与后端不一致。本地修法："
+            echo "::error::  python scripts/export_openapi.py --out web/openapi.json"
+            echo "::error::  cd web && pnpm gen:api"
+            echo "::error::然后把 web/openapi.json 与 web/src/api-types.gen.ts 一起提交。"
+            exit 1
+          fi

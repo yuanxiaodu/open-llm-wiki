@@ -1,0 +1,23 @@
+[Unit]
+Description=Open LLM Wiki 服务
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/open_llm_wiki
+EnvironmentFile=/opt/open_llm_wiki/.env
+# 裁定 R85：git log 的 %aI 带本地时区偏移，库里的 created_at 是 UTC——不钉 TZ 的话
+# 两套时间混排会错序（wiki 目录按"最后改动时间"排序、日志与消息交错时都看得见）。
+Environment=TZ=UTC
+ExecStart=/opt/open_llm_wiki/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8100 --workers 1 --proxy-headers --forwarded-allow-ips=127.0.0.1
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/opt/open_llm_wiki/data
+
+[Install]
+WantedBy=multi-user.target

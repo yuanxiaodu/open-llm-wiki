@@ -1,0 +1,19 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+data/
+.pytest_cache/
+web/dist/
+web/node_modules/
+# 工具本地状态：.qoder/worktrees 里放着一棵 106MB 的 git worktree 副本，
+# .vscode 是编辑器偏好。都不该进仓库，也不该让 git status 一直脏。
+.qoder/
+.vscode/
+.pnpm-store/
+# Local browser verification artifacts
+.playwright-cli/
+output/playwright/
+.DS_Store
+*.bundle
+.env.local

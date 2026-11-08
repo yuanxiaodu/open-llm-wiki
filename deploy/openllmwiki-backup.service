@@ -1,0 +1,12 @@
+[Unit]
+Description=Open LLM Wiki 每日备份（数据库 + 上传与解析文本目录 + wiki 事实源含 .git 历史）
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/opt/open_llm_wiki
+EnvironmentFile=/opt/open_llm_wiki/.env
+ExecStart=/opt/open_llm_wiki/.venv/bin/python -m app.cli backup --keep 14
+NoNewPrivileges=true
+PrivateTmp=true
+ReadWritePaths=/opt/open_llm_wiki/data
