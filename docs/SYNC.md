@@ -7,7 +7,7 @@ wiki 仓库就是一个普通 Git 仓库。没有 outbox 分支，也不在服�
 
 | 文件 | 是否跟踪 | 合并方式 |
 |---|---|---|
-| `{entities,concepts,comparisons,queries,summaries}/*.md` | 是 | 标准三方合并 |
+| `{entities,concepts,comparisons,queries}/*.md` | 是 | 标准三方合并 |
 | `log.md` / `log-*.md` | 是 | `.gitattributes` 的 `merge=union` |
 | `index.md` | 是 | 标准三方合并；服务端写页只 upsert 自己的条目 |
 | `SCHEMA.md` | 是 | 标准三方合并；默认来自 llm-wiki 模板，wiki.toml 不覆盖 |

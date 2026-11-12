@@ -101,9 +101,9 @@ def test_path_shape_from_type():
     """PATH 形状：`{dir}/{slug}.md`，由 type 决定目录。"""
     assert DIRS == {
         "entity": "entities", "concept": "concepts", "comparison": "comparisons",
-        "query": "queries", "summary": "summaries",
+        "query": "queries",
     }
-    assert TYPES == ("entity", "concept", "comparison", "query", "summary")
+    assert TYPES == ("entity", "concept", "comparison", "query")
     assert page_path(_page()) == "entities/baoming.md"
     assert page_path(_page(page_type="comparison")) == "comparisons/baoming.md"
     assert path_for("x", "query") == "queries/x.md"
@@ -165,15 +165,15 @@ def test_slugify_never_starts_with_underscore_or_dash():
         assert slug[:1].isalnum(), (title, slug)
         assert slug[0] not in "-_"
 def test_unknown_frontmatter_keys_are_preserved():
-    """Obsidian/Dataview 字段（我们不认识的键）原样保留，不被 dump 丢掉。"""
+    """读侧保留未知键，写侧只输出原生键（迁移后不再把扩展键写回文件）。"""
     text = (
         "---\ntitle: T\ncreated: 2026-10-23\nupdated: 2026-10-23\ntype: entity\n"
         "aliases: [别名]\nstatus: draft\n---\n\n正文\n"
     )
     page = parse_md("x", text)
     assert page.extra == {"aliases": "[别名]", "status": "draft"}
-    assert parse_md("x", dump_md(page)).extra == page.extra
-
+    rewritten = dump_md(page)
+    assert "aliases:" not in rewritten and "status:" not in rewritten
 
 def test_yaml_special_titles_and_flow_values_round_trip():
     p = _page(title="Why: evidence #notes", tags=["a, b", "method"], sources=["https://example.com/?q=x,y"])

@@ -303,13 +303,13 @@ def test_parsed_upload_is_ingested_into_raw(client, conn, member_login, tmp_wiki
     assert resp.status_code == 200, resp.text
     body = resp.json()
     raw_path = body["raw_path"]
-    assert raw_path == f"raw/uploads/{body['upload_id']}-pptx.md"
+    assert raw_path == f"raw/papers/{body['upload_id']}-pptx.md"
 
     target = settings.wiki_dir / raw_path
     assert target.is_file(), f"raw 没落盘：{raw_path}"
     raw_text = target.read_text(encoding="utf-8")
-    assert "source_file: 周记.pptx" in raw_text
-    assert f"upload_id: {body['upload_id']}" in raw_text
+    assert "source_file:" not in raw_text
+    assert "sha256: " in raw_text
     assert "sha256:" in raw_text and "ingested:" in raw_text
     assert "漏单降到 1 单" in raw_text
 
@@ -414,7 +414,7 @@ def test_xlsx_parsed_into_markdown_tables(client, conn, member_login, tmp_wiki):
         "pages_total": 1, "pages_with_text": 1, "pages_image_only": 0,
     }
     raw_path = body["raw_path"]
-    assert raw_path == f"raw/uploads/{body['upload_id']}-xlsx.md"
+    assert raw_path == f"raw/articles/{body['upload_id']}-xlsx.md"
     assert (tmp_wiki / raw_path).is_file()
 
     row = conn.execute(
@@ -462,7 +462,7 @@ def test_image_upload_goes_through_vision(client, conn, member_login, tmp_wiki, 
         "pages_total": 1, "pages_with_text": 1, "pages_image_only": 0,
     }
     raw_path = body["raw_path"]
-    assert raw_path.startswith(f"raw/uploads/{body['upload_id']}-")
+    assert raw_path.startswith(f"raw/articles/{body['upload_id']}-")
     assert "漏单降到 1 单" in (tmp_wiki / raw_path).read_text(encoding="utf-8")
     assert len(seen_paths) == 1 and seen_paths[0].suffix == ".png"
 
@@ -749,7 +749,7 @@ def test_send_with_attachment_finalizes_and_starts_a_turn(client, conn, member_l
     att = body["attachments"][0]
     assert att["upload_id"] == staged["upload_id"]
     assert att["parse_status"] == "done" and att["chars"] > 0
-    assert att["raw_path"].startswith(f"raw/uploads/{staged['upload_id']}-")
+    assert att["raw_path"].startswith(f"raw/articles/{staged['upload_id']}-")
 
     row = conn.execute(
         "SELECT message_id, parse_status, parsed_text_path FROM upload_files WHERE id = ?",

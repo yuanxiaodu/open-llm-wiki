@@ -115,7 +115,7 @@ def test_permission_state_says_query_only_when_build_is_off():
     text = runner._permission_state(False)
     assert "【本轮权限】" in text
     assert "使用权限" in text and "查询" in text
-    assert "page_type=query/comparison/summary" in text
+    assert "新建/编辑 query/comparison" in text
     assert "自行新建" in text and "不要问用户" in text
     # 查询轮要直接回答；联网/摄入要说明权限不支持
     assert "直接基于已有页面回答" in text

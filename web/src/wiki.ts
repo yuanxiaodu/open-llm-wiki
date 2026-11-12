@@ -23,7 +23,6 @@ export const WIKI_INDEX_PATH = "";
 // ---------- 归一化后的接口形状 ----------
 
 export interface WikiPageMeta {
-  status?: string;
   /** 相对 vault 的物理路径，带 `.md`（canonical）。 */
   path: string;
   slug: string;
@@ -54,7 +53,6 @@ export interface WikiBacklink {
 }
 
 export interface WikiPageDetail {
-  status?: string;
   contested?: boolean;
   contradictions?: string[];
   metadata?: Record<string, string>;
@@ -168,7 +166,6 @@ const LEGACY_DIR: Record<string, string> = {
   concept: "concepts",
   comparison: "comparisons",
   query: "queries",
-  summary: "summaries",
 };
 
 /** page_type → 人话标签（entity→实体…）。旧 topic 保留旧名，未知说「其他」。 */
@@ -177,7 +174,6 @@ export const TYPE_LABELS: Record<string, string> = {
   concept: "概念",
   comparison: "对比",
   query: "查询",
-  summary: "摘要",
   topic: "主题",
   other: "其他",
 };
@@ -224,7 +220,6 @@ const DIR_TO_TYPE: Record<string, string> = {
   concepts: "concept",
   comparisons: "comparison",
   queries: "query",
-  summaries: "summary",
 };
 
 /** 物理目录名 → 左树里的中文标签；不认识的目录用原名。 */
@@ -270,7 +265,6 @@ function normalizePageMeta(raw: unknown): WikiPageMeta | null {
     created_at: strOrNull(r.created_at),
     updated_at: strOrNull(r.updated_at),
     actor: strOrNull(r.actor),
-    ...(r.status === "draft" ? { status: "draft" } : {}),
   };
 }
 
@@ -325,7 +319,6 @@ export function normalizeWikiDetail(raw: unknown): WikiPageDetail {
     title: str(r.title).trim() === "" ? pathStem(path) : str(r.title),
     page_type: str(r.page_type) || "entity",
     confidence: normalizeConfidence(r.confidence),
-    status: str(obj(r.metadata).status) || "published",
     contested: r.contested === true,
     contradictions: normalizeTags(r.contradictions),
     metadata: obj(r.metadata) as Record<string, string>,
@@ -377,7 +370,7 @@ interface DirBucket {
   pages: WikiPageMeta[];
 }
 
-const ROOT_DIR_ORDER = ["entities", "concepts", "comparisons", "queries", "summaries"];
+const ROOT_DIR_ORDER = ["entities", "concepts", "comparisons", "queries"];
 
 function emptyBucket(): DirBucket {
   return { dirs: new Map(), pages: [] };
@@ -405,7 +398,7 @@ function countLeaves(bucket: DirBucket): number {
 function pageFile(page: WikiPageMeta): WikiTreeNode {
   return {
     kind: "file",
-    label: (page.title.trim() === "" ? pathStem(page.path) : page.title) + (page.status === "draft" ? "（草稿）" : ""),
+    label: page.title.trim() === "" ? pathStem(page.path) : page.title,
     href: wikiPageHref(page.path),
     path: page.path,
     type: page.page_type,
@@ -704,19 +697,4 @@ export function latestStamp(values: Iterable<string | null | undefined>): string
     }
   }
   return best;
-}
-
-/** Safely decode optional analysis metadata from old and new pages. */
-export function analysisMetadata(metadata?: Record<string, string>) {
-  let spec: Record<string, unknown> = {};
-  let basis: unknown[] = [];
-  try { spec = obj(JSON.parse(metadata?.analysis ?? "{}")); } catch { /* old or malformed metadata */ }
-  try { const value: unknown = JSON.parse(metadata?.basis_versions ?? "[]"); if (Array.isArray(value)) basis = value; } catch { /* optional */ }
-  return {
-    question: str(spec.question), scope: str(spec.scope), asOf: str(spec.as_of), uncertainties: str(spec.uncertainties),
-    basis: basis.map((v) => ({ path: str(obj(v).path), head: str(obj(v).head) })).filter((v) => v.path !== ""),
-    paragraphs: (Array.isArray(spec.paragraph_sources) ? spec.paragraph_sources : []).map((v) => ({
-      paragraph: str(obj(v).paragraph), sources: normalizeSources(obj(v).sources),
-    })),
-  };
 }

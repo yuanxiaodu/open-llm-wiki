@@ -1,7 +1,7 @@
 """wiki 的共享写路径与读侧。人和智能体都走 write_page，没有第二条路。
 
 S5 起 wiki 是 Hermes 标准的物理 vault（`data/wiki/`，Obsidian 可直接打开）：
-`SCHEMA.md` / `index.md` / `log.md` + `raw/` + `{entities,concepts,comparisons,queries,summaries}/`。
+`SCHEMA.md` / `index.md` / `log.md` + `raw/{articles,papers,transcripts,assets}/` + `{entities,concepts,comparisons,queries}/`。
 一页的 path 是 `{dir}/{slug}.md`，`type` 决定目录、创建后不可改（计划 §1）。
 
 写路径是"先证后写"：
@@ -263,7 +263,8 @@ def _ensure_dirs() -> None:
     settings.wiki_dir.mkdir(parents=True, exist_ok=True)
     for directory in serialize.DIRS.values():
         (settings.wiki_dir / directory).mkdir(parents=True, exist_ok=True)
-    (settings.wiki_dir / serialize.RAW_UPLOADS_DIR).mkdir(parents=True, exist_ok=True)
+    for raw_dir in serialize.RAW_DIRS:
+        (settings.wiki_dir / raw_dir).mkdir(parents=True, exist_ok=True)
 
 
 def page_files() -> list[str]:
@@ -455,6 +456,7 @@ def backlinks_of(rel: str, pages: dict[str, serialize.Page] | None = None) -> li
 SUMMARY_MAX = 120
 # 脚注角标从摘要里摘掉：它是正文里的锚点，混进目录只是噪音。
 _FOOTNOTE_MARK_RE = re.compile(r"\[\^[A-Za-z0-9_-]+\]")
+_PROVENANCE_MARK_RE = re.compile(r"\^\[raw/[^\]]+\]")
 # 行首的 markdown 标题井号（# ~ ######）。只去行首那一段，正文中间的 # 原样留着。
 _HEADING_RE = re.compile(r"^#{1,6}[ \t]*")
 
@@ -476,6 +478,7 @@ def summary_of(body_md: str) -> str:
             continue
         text = _HEADING_RE.sub("", text)
         text = _FOOTNOTE_MARK_RE.sub("", text)
+        text = _PROVENANCE_MARK_RE.sub("", text)
         text = _WIKILINK_RE.sub(lambda m: (m.group(2) or m.group(1)).strip(), text)
         text = " ".join(text.split())
         if len(text) > SUMMARY_MAX:
@@ -507,7 +510,6 @@ def list_pages(conn: sqlite3.Connection) -> list[dict]:
             "created_at": page.created or None,
             "updated_at": page.updated or None,
             "actor": entry.actor if entry else None,
-            **({"status": "draft"} if page.extra.get("status") == "draft" else {}),
             "_at": entry.at if entry else "",
         })
     out.sort(key=lambda item: (item["updated_at"] or "", item["_at"]), reverse=True)
@@ -586,7 +588,7 @@ def _schema_text() -> str:
     try:
         return SCHEMA_TEMPLATE_PATH.read_text(encoding="utf-8")
     except OSError:
-        return "# Wiki Schema\n\n## Domain\n\n（待补充）\n\n## tags\n\n- 概念\n"
+        return "# Wiki Schema\n\n## Domain\n\n（待补充）\n\n## Tag Taxonomy\n\n- 概念\n"
 
 
 
@@ -655,17 +657,25 @@ def _append_missing_lines(path: Path, lines: tuple[str, ...]) -> bool:
 
 
 _INDEX_LINK_RE = re.compile(r"\[\[([^\]|]+)(?:\|[^\]]*)?\]\]")
-_INDEX_HEADER_RE = re.compile(r"^##\s+(.+?)(?:（(\d+)）)?\s*$")
+_INDEX_HEADER_RE = re.compile(r"^##\s+([A-Za-z]+)\s*$")
+_INDEX_TOTAL_RE = re.compile(
+    r"^(?P<prefix>>\s*)?Last updated:\s*(?P<date>[^|]*?)\s*\|\s*Total pages:\s*(?P<total>\d+)\s*$"
+)
+INDEX_LABELS = {
+    "entity": "Entities",
+    "concept": "Concepts",
+    "comparison": "Comparisons",
+    "query": "Queries",
+}
+_INDEX_TYPE_BY_LABEL = {label.lower(): page_type for page_type, label in INDEX_LABELS.items()}
 
 
 def _index_entry(page) -> str:
-    """一页在 index.md 里的一行（Obsidian 别名写法）。"""
+    """一页在 index.md 里的一行（原生 2.1.0：wikilink + 摘要，不带 tags）。"""
     entry = f"- [[{page.slug}|{page.title}]]"
     summary = summary_of(page.body_md)
     if summary:
         entry += f" — {summary}"
-    if page.tags:
-        entry += f"（{'、'.join(page.tags)}）"
     return entry
 
 
@@ -674,52 +684,41 @@ def _line_has_slug(line: str, slug: str) -> bool:
 
 
 def _recount_index(lines: list[str]) -> list[str]:
-    """重算每个分节的条目数与总页数/最后更新，其他行原样保留。"""
-    config = get_config()
-    label_to_type = {label: page_type for page_type, label in config.type_labels.items()}
+    """重算分节条目数与原生 header，其他行原样保留。"""
     counts: dict[str, int] = {}
     current: str | None = None
     for line in lines:
         match = _INDEX_HEADER_RE.match(line)
-        if match and line.startswith("## "):
-            current = label_to_type.get(match.group(1).strip())
+        if match:
+            current = _INDEX_TYPE_BY_LABEL.get(match.group(1).strip().lower())
         elif line.startswith("## "):
             current = None
         elif current and line.startswith("- [["):
             counts[current] = counts.get(current, 0) + 1
 
     pages = all_pages()
-    total = sum(1 for page in pages.values() if page.extra.get("status") != "draft")
     updated = max((page.updated for page in pages.values() if page.updated), default="")
-
     out: list[str] = []
     for line in lines:
-        match = _INDEX_HEADER_RE.match(line)
-        if match and line.startswith("## "):
-            label = match.group(1).strip()
-            page_type = label_to_type.get(label)
-            if page_type:
-                line = f"## {label}（{counts.get(page_type, 0)}）"
-        elif line.startswith("最后更新："):
-            line = f"最后更新：{updated or '—'}"
-        elif line.startswith("总页数："):
-            line = f"总页数：{total}"
+        match = _INDEX_TOTAL_RE.match(line)
+        if match:
+            prefix = match.group("prefix") or ""
+            line = f"{prefix}Last updated: {updated or '—'} | Total pages: {len(pages)}"
         out.append(line)
     return out
 
 
 def _insert_index_entry(lines: list[str], page) -> list[str]:
-    """把一页插到对应 type 分节末尾；没有分节就补一个。"""
-    label = get_config().type_labels.get(page.page_type, page.page_type)
+    """把一页插到对应英文分节末尾；没有分节就补一个。"""
+    label = INDEX_LABELS[page.page_type]
     entry = _index_entry(page)
     header_at = None
     for i, line in enumerate(lines):
-        match = _INDEX_HEADER_RE.match(line)
-        if line.startswith("## ") and match and match.group(1).strip() == label:
+        if line.strip().lower() == f"## {label}".lower():
             header_at = i
             break
     if header_at is None:
-        lines += ["", f"## {label}（1）", entry]
+        lines += ["", f"## {label}", entry]
         return lines
     insert_at = len(lines)
     for j in range(header_at + 1, len(lines)):
@@ -733,17 +732,9 @@ def _insert_index_entry(lines: list[str], page) -> list[str]:
 
 
 def _index_repair(text: str) -> str:
-    """保留现有 index 的排版/手工条目，只补缺失页、去掉指向不存在页的条目。
-
-    这是服务端 pull 之后的“目录修复”，不是整体重建：首次从本地已有 wiki 同步过来时，
-    本地 index 的格式与摘要原样保留，只保证目录和最终页面集合对得上。
-    """
+    """保留现有 index 的排版/手工条目，只补缺失页、去掉指向不存在页的条目。"""
     pages = all_pages()
-    # draft 不进已发布目录；index 里若有 draft 条目，服务端修复时移除。
-    stems = {
-        page.slug for page in pages.values()
-        if page.extra.get("status") != "draft"
-    }
+    stems = {page.slug for page in pages.values()}
     lines = text.splitlines()
     kept: list[str] = []
     for line in lines:
@@ -759,10 +750,7 @@ def _index_repair(text: str) -> str:
     }
     for page_type in serialize.TYPES:
         group = sorted(
-            (
-                (rel, page) for rel, page in pages.items()
-                if page.page_type == page_type and page.extra.get("status") != "draft"
-            ),
+            ((rel, page) for rel, page in pages.items() if page.page_type == page_type),
             key=lambda item: item[1].slug,
         )
         for _rel, page in group:
@@ -773,41 +761,34 @@ def _index_repair(text: str) -> str:
 
 
 def _index_upsert(page, action: str) -> str:
-    """在现有 index 上增/删/改一页，保留别人的排版与手工条目。
-
-    服务端写页不再整体重建目录：两个 writer 都可能维护 index，整体重写会把本地
-    刚补的条目冲掉。这里只动目标 slug 那一行，再重算分节计数。
-    """
+    """在现有 index 上增/删/改一页，保留别人的排版与手工条目。"""
     current = _read_text(_path(INDEX_FILE))
     if not current:
         return _index_text()
     lines = [line for line in current.splitlines() if not _line_has_slug(line, page.slug)]
-    if action != "delete" and page.extra.get("status") != "draft":
+    if action != "delete":
         lines = _insert_index_entry(lines, page)
     return "\n".join(_recount_index(lines)).rstrip() + "\n"
 
 
 def _index_text() -> str:
-    """首次建库/手动 reindex 时的完整 index.md。"""
-    config = get_config()
+    """首次建库/手动 reindex 时的完整原生 index.md。"""
     pages = all_pages()
     updated = max((page.updated for page in pages.values() if page.updated), default="")
     lines = [
-        f"# {config.site_name}索引",
+        "# Wiki Index",
         "",
-        f"最后更新：{updated or '—'}",
-        f"总页数：{sum(p.extra.get('status') != 'draft' for p in pages.values())}",
-        *(["[按主题浏览](/wiki/source?path=_meta/topic-map.md)"] if len(pages) > 200 else []),
+        "> Content catalog. Every wiki page listed under its type with a one-line summary.",
+        f"> Last updated: {updated or '—'} | Total pages: {len(pages)}",
     ]
-    labels = config.type_labels
     for page_type in serialize.TYPES:
         group = sorted(
-            ((rel, page) for rel, page in pages.items() if page.page_type == page_type and page.extra.get("status") != "draft"),
+            ((rel, page) for rel, page in pages.items() if page.page_type == page_type),
             key=lambda item: item[1].slug,
         )
         if not group:
             continue
-        lines += ["", f"## {labels.get(page_type, page_type)}（{len(group)}）"]
+        lines += ["", f"## {INDEX_LABELS[page_type]}"]
         for _rel, page in group:
             lines.append(_index_entry(page))
     return "\n".join(lines) + "\n"
@@ -943,9 +924,19 @@ def _safe_raw_name(filename: str, limit: int = 60) -> str:
     return (cleaned or "upload")[:limit]
 
 
-def raw_path_for(upload_id: int, filename: str) -> str:
-    """raw md 的相对 path：`raw/uploads/{upload_id}-{safe-name}.md`（计划 §1/§3）。"""
-    return f"{serialize.RAW_UPLOADS_DIR}/{int(upload_id)}-{_safe_raw_name(filename)}.md"
+def _raw_dir_for(filename: str, source_url: str = "") -> str:
+    """原生 2.1.0 raw 子目录：URL/文章 → articles；PDF/EPUB/DOCX/PPTX → papers。"""
+    if source_url:
+        return "raw/articles"
+    suffix = Path(str(filename or "")).suffix.lower()
+    if suffix in (".pdf", ".epub", ".docx", ".pptx"):
+        return "raw/papers"
+    return "raw/articles"
+
+
+def raw_path_for(upload_id: int, filename: str, source_url: str = "") -> str:
+    """raw md 的相对 path：`raw/articles|papers|transcripts|assets/<id>-<safe-name>.md`。"""
+    return f"{_raw_dir_for(filename, source_url)}/{int(upload_id)}-{_safe_raw_name(filename)}.md"
 
 
 @_serialized_write
@@ -969,7 +960,11 @@ def ingest_raw_upload(conn, upload_id: int, filename: str, text: str, actor: str
             "ok": False, "path": None, "sha": None, "noop": False, "created": False,
             "failed": [{"key": "", "quote": "", "note": "上传编号不是数字，不生成 raw"}],
         }
-    rel = raw_path_for(upload_id, filename)
+    row = conn.execute(
+        "SELECT sha256, source_url FROM upload_files WHERE id = ?", (upload_id,)
+    ).fetchone()
+    source_url = (row["source_url"] or "") if row else ""
+    rel = raw_path_for(upload_id, filename, source_url)
     path = _path(rel)
     if path.exists():
         return {
@@ -977,20 +972,13 @@ def ingest_raw_upload(conn, upload_id: int, filename: str, text: str, actor: str
             "sha": _git_read("raw", repo.head_sha, rel), "failed": [],
         }
 
-    row = conn.execute(
-        "SELECT sha256, source_url FROM upload_files WHERE id = ?", (upload_id,)
-    ).fetchone()
-    sha256 = row["sha256"] if row else ""
     source_file = " ".join(str(filename or "").split()) or "未命名材料"
-    front = [
-        "---",
-        f"source_file: {serialize.scalar(source_file)}",
-        f"upload_id: {upload_id}",
-        f"sha256: {content_hash((text or '').rstrip() + chr(10))}",
-        f"content_sha256: {content_hash((text or '').rstrip() + chr(10))}",
-        f"original_sha256: {sha256}",
-        f"source_url: {row['source_url'] or '' if row else ''}",
+    front = ["---"]
+    if source_url:
+        front.append(f"source_url: {serialize.scalar(source_url)}")
+    front += [
         f"ingested: {_today()}",
+        f"sha256: {content_hash((text or '').rstrip() + chr(10))}",
         "---",
         "",
         (text or "").rstrip(),
@@ -1044,7 +1032,10 @@ def refresh_raw_upload(conn, upload_id: int, filename: str, text: str, actor: st
             "ok": False, "path": None, "sha": None, "noop": False, "created": False,
             "failed": [{"key": "", "quote": "", "note": "这份材料没有解析文本，不生成 raw"}],
         }
-    rel = raw_path_for(upload_id, filename)
+    row = conn.execute(
+        "SELECT source_url FROM upload_files WHERE id = ?", (int(upload_id),)
+    ).fetchone()
+    rel = raw_path_for(upload_id, filename, (row["source_url"] or "") if row else "")
     path = _path(rel)
     if not path.exists():
         return ingest_raw_upload(conn, upload_id, filename, text, actor)
@@ -1055,18 +1046,16 @@ def refresh_raw_upload(conn, upload_id: int, filename: str, text: str, actor: st
             "ok": False, "path": rel, "sha": None, "noop": False, "created": False,
             "failed": [{"key": "", "quote": "", "note": f"raw 读不回来：{exc}"}],
         }
-    lines = old.splitlines(keepends=True)
-    front_end = -1
-    if lines and lines[0].strip() == "---":
-        for index in range(1, len(lines)):
-            if lines[index].strip() == "---":
-                front_end = index
-                break
     meta, _ = split_raw(old)
     body = (text or "").rstrip() + "\n"
-    meta.setdefault("original_sha256", meta.get("sha256", ""))
-    meta["sha256"] = meta["content_sha256"] = content_hash(body)
-    front = "\n".join(["---", *(f"{k}: {serialize.scalar(v)}" for k, v in meta.items()), "---"])
+    native = {}
+    if meta.get("source_url"):
+        native["source_url"] = meta["source_url"]
+    native["ingested"] = meta.get("ingested") or _today()
+    native["sha256"] = content_hash(body)
+    front = "\n".join(
+        ["---", *(f"{k}: {serialize.scalar(v)}" for k, v in native.items()), "---"]
+    )
     new_content = front + "\n\n" + body
     if new_content == old:
         return {

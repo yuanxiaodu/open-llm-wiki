@@ -269,7 +269,7 @@ def test_ingest_url_endpoint_stores_material(client, conn, member_login, tmp_wik
     assert body["title"] == "招聘要求解读"
     assert body["url"] == "https://example.com/job"
     assert body["chars"] == len(_FAKE_PAGE["text"])
-    assert body["raw_path"].startswith(f"raw/uploads/{body['upload_id']}-")
+    assert body["raw_path"].startswith(f"raw/articles/{body['upload_id']}-")
 
     row = conn.execute(
         "SELECT message_id, user_id, orig_filename, stored_path, mime, parse_status,"

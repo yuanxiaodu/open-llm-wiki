@@ -37,7 +37,7 @@ LOG_MAX_ENTRIES = 500
 _SEVERITY_ORDER = {"error": 0, "warn": 1, "info": 2}
 # 这些是体检确认过的真实体卡（标题带冒号是"专名：身份说明"，不是命题页）
 _ENTITY_SLUG_ALLOW = {"ai", "monica-ai", "monica", "mai-ke-ai-er-luo-ai"}
-_SCHEMA_TAG_SECTION = re.compile(r"^##\s*tags\s*$", re.MULTILINE)
+_SCHEMA_TAG_SECTION = re.compile(r"^##\s+(?:tags|tag taxonomy)\s*$", re.IGNORECASE | re.MULTILINE)
 _NEXT_SECTION = re.compile(r"^##\s+", re.MULTILINE)
 
 
@@ -92,43 +92,32 @@ def _raw_drift(conn, findings: list, add) -> None:
             add("raw_drift", "error", rel, "raw 文件读不回来")
             continue
         meta, body = split_raw(text)
-        recorded = meta.get("content_sha256")
-        # External Hermes sources use sha256 for the body; legacy uploads used original bytes.
-        if not meta.get("upload_id"):
-            recorded = recorded or meta.get("sha256")
+        recorded = meta.get("sha256") or meta.get("content_sha256")
         if recorded:
             if content_hash(body) != recorded:
                 add("raw_drift", "error", rel, "raw 正文摘要不匹配；保留现场，核对原始材料，不要自动重算掩盖修改")
         else:
             add("raw_integrity_unverified", "warn", rel, "旧归档缺正文摘要；需与解析原文核对后建立校验基线")
-        upload_id = meta.get("upload_id", "")
-        if conn is not None and upload_id.isdigit():
-            row = conn.execute("SELECT * FROM upload_files WHERE id = ?", (int(upload_id),)).fetchone()
-            if row is None:
-                add("raw_record_missing", "warn", rel, "对应上传记录不在；正文校验仍独立执行")
-            else:
-                original = meta.get("original_sha256") or (meta.get("sha256") if not recorded else "")
-                if original and row["sha256"] and original != row["sha256"]:
-                    add("raw_drift", "error", rel, "原件摘要与上传记录不一致")
-                if not recorded and row["parsed_text_path"]:
-                    try:
-                        extracted = (settings.data_dir / row["parsed_text_path"]).read_text(encoding="utf-8")
-                        if extracted.rstrip() != body.rstrip():
-                            add("raw_drift", "error", rel, "旧归档正文与解析文本不同，需人工核对")
-                    except OSError:
-                        pass
 
 
-def _log_paths(text: str) -> set[str]:
-    """log.md 里每条记录 `- path: xxx` 的 path 集合（`（批量）` 之类不算）。"""
+_LOG_PAGE_PATH_RE = re.compile(r"(?:entities|concepts|comparisons|queries)/[^\s`'\"<>，。；]+?\.md")
+
+
+def _log_paths(text: str, pages: set[str] | None = None) -> set[str]:
+    """log 里的页面 path：兼容原生 `- concepts/foo.md` 与服务端 `- path: ...`。"""
     out: set[str] = set()
+    allowed = pages or set()
     for line in (text or "").splitlines():
         item = line.strip()
-        if not item.startswith("- path:"):
+        if item.startswith("- path:"):
+            path = item[len("- path:"):].strip().lstrip("./")
+            if path:
+                out.add(path)
             continue
-        path = item[len("- path:"):].strip()
-        if path and "/" in path:
-            out.add(path)
+        for match in _LOG_PAGE_PATH_RE.finditer(item):
+            path = match.group(0).lstrip("./")
+            if not allowed or path in allowed:
+                out.add(path)
     return out
 
 
@@ -215,7 +204,7 @@ def lint(conn=None, *, paths: set[str] | None = None) -> dict:
         if not incoming[rel]:
             add("orphan", "warn", rel, "没有任何页面链到这一页（孤立页）")
         # 4) index_missing（index 里用 Obsidian 别名写法 [[slug|title]]，两种都认）
-        if page.extra.get("status") != "draft" and not re.search(r"\[\[" + re.escape(page.slug) + r"(?:\||\]\])", index_text):
+        if not re.search(r"\[\[" + re.escape(page.slug) + r"(?:\||\]\])", index_text):
             add("index_missing", "error", rel, "这一页不在 index.md 里（index 可能被手改过）")
         # 5) tag_unknown
         if taxonomy is not None:
@@ -250,7 +239,7 @@ def lint(conn=None, *, paths: set[str] | None = None) -> dict:
         if updated and ((dates and max(dates) - updated > timedelta(days=STALE_DAYS))
                         or (not page.sources and today - updated > timedelta(days=STALE_DAYS))):
             add("stale", "info", rel, "页面早于较新的来源或长期缺乏来源，需要复核")
-        if len(independent_sources(page.sources)) >= 3 and not page.extra.get("analysis") and not re.search(r"\^\[raw/[^\]]+\]", page.body_md):
+        if len(independent_sources(page.sources)) >= 3 and not re.search(r"\^\[raw/[^\]]+\]", page.body_md):
             add("provenance_missing", "warn", rel, "多来源综合缺少段落证据映射，需标注各结论来源")
         # 8) contested
         if page.contested or page.contradictions:
@@ -292,20 +281,8 @@ def lint(conn=None, *, paths: set[str] | None = None) -> dict:
             add("confidence_unsupported", "warn", rel, "high 缺少可识别的独立来源或存在争议，需复核")
         elif page.confidence not in ("high", "medium", "low"):
             add("confidence_invalid", "error", rel, "confidence 值不合法")
-        if page.extra.get("status") == "draft":
-            add("analysis_draft", "info", rel, "分析草稿尚未发布，不应作为确定性知识依据")
         if not page.sources:
             add("sources_empty", "warn", rel, "尚未记录原始来源，需核对证据后补充；空列表不代表证据已核验")
-        if page.page_type in ("query", "comparison") and page.extra.get("status") != "draft":
-            from .analysis import AnalysisSpec, prepare
-            if not page.extra.get("analysis"):
-                add("analysis_contract", "warn", rel, "历史分析页缺问题、范围、依据版本等发布信息，需要复核迁移")
-            else:
-                try:
-                    prepare(conn, page.page_type, page.body_md, page.sources,
-                            AnalysisSpec.model_validate_json(page.extra["analysis"]), "published")
-                except ValueError as exc:
-                    add("analysis_contract", "warn", rel, str(exc))
         # 17) type_heuristic：entity 应该是实体，不是“专名：论断”命题
         if (
             page.page_type == "entity"
@@ -317,19 +294,19 @@ def lint(conn=None, *, paths: set[str] | None = None) -> dict:
                 f"entity 标题像命题（{page.title}），考虑改成 concept",
             )
 
-    # 18) source_coverage：每个 raw 上传源至少被 1 页引用
-    raw_base = settings.wiki_dir / serialize.RAW_UPLOADS_DIR
+    # 18) source_coverage：每个 raw 源至少被 1 页引用
+    raw_base = settings.wiki_dir / "raw"
     if raw_base.is_dir():
         referenced = {source for page in pages.values() for source in page.sources}
-        for path in sorted(raw_base.glob("*.md")):
-            rel = f"{serialize.RAW_UPLOADS_DIR}/{path.name}"
+        for path in sorted(raw_base.rglob("*.md")):
+            rel = path.relative_to(settings.wiki_dir).as_posix()
             if rel not in referenced:
                 add("source_coverage", "warn", rel, "这个 raw 源尚待编译；不属于本轮结构错误")
 
     # 19) log_coverage：每页至少有一条日志记录（create/edit）
     log_text = _read("log.md") or ""
     archive_logs = "\n".join(p.read_text(encoding="utf-8") for p in settings.wiki_dir.glob("log-*.md") if p.is_file())
-    logged = _log_paths(log_text + "\n" + archive_logs)
+    logged = _log_paths(log_text + "\n" + archive_logs, set(pages))
     for rel in pages:
         if rel not in logged:
             add("log_coverage", "warn", rel, "这一页没有任何 log 记录（create/edit 缺失）")

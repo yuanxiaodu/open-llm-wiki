@@ -25,7 +25,6 @@ from ..services import web_ingest
 from ..services import web_search as web_search_service
 from ..wiki import repo, serialize, store
 from ..wiki.quality import default_confidence, normalize_confidence
-from ..wiki.analysis import AnalysisSpec, prepare as prepare_analysis
 from ..wiki.provenance import canonical_url, source_file
 
 logger = logging.getLogger("openllmwiki.agent")
@@ -53,11 +52,11 @@ NOTE_DELETE = "删页"
 WRITE_TOOL_NAMES = ("write_page", "edit_page", "delete_page")
 
 # 只有使用权限的成员允许新建的页面类型（2026-10-30 委托人二次确认）：
-#   - query / comparison / summary 是"把已有内容整理成一张查询/对照/摘要页"，
+#   - query / comparison 是"把已有内容整理成一张查询/对照页"，
 #     属于查询的沉淀，不是修改既有知识；
 #   - entity / concept 是建设知识库本体，不在只读权限内；
 #   - 可 edit 自己的分析草稿；发布、编辑已发布页和 delete_page 仍拒绝。
-READONLY_WRITE_TYPES = ("query", "comparison", "summary")
+READONLY_WRITE_TYPES = ("query", "comparison")
 
 # 一次交给模型的正文/材料上限。与 search.MAX_BODY 同一个数：检索里能搜到的那一截，
 # 与 read 端出来的那一截，长度口径一致，模型不会以为"搜到的比读到的多"。
@@ -90,7 +89,7 @@ _SPECIAL_READ = {
     "log.md": "log",
 }
 WHITELIST_TEXT = (
-    "只许读 entities/concepts/comparisons/queries/summaries 下的页面、raw/ 里的材料、"
+    "只许读 entities/concepts/comparisons/queries 下的页面、raw/ 里的材料、"
     "index.md / SCHEMA.md / log.md，或旧入口 upload/{编号}"
 )
 
@@ -302,7 +301,7 @@ def _denied_text(what: str) -> str:
     return (
         f"{FAIL_TEXT}当前账号只有使用权限，不能{what}。"
         "可以查询、搜索、阅读；需要沉淀查询结果时，"
-        "可以新建 page_type 为 query / comparison / summary 的查询页、对照页或摘要页。"
+        "可以新建 page_type 为 query / comparison 的查询页或对照页。"
     )
 
 
@@ -513,7 +512,7 @@ def _list_wiki(conn: sqlite3.Connection, offset: int = 0, limit: int = LIST_MAX)
             tags = "、".join(page.get("tags") or []) or "无"
             summary = page.get("summary") or "（没有摘要）"
             lines.append(
-                f"- {page['path']}｜{page['page_type']}｜{page.get('status', 'published')}｜tags: {tags}｜{summary}"
+                f"- {page['path']}｜{page['page_type']}｜tags: {tags}｜{summary}"
             )
         if len(pages) > offset + limit:
             lines.append(f"- （只列了最近改过的 {limit} 份，剩下的用 search 找，或 list_wiki(offset={offset+limit}) 续读）")
@@ -627,8 +626,7 @@ def _hit_line(hit: dict) -> str:
 
 def _write_page(conn: sqlite3.Connection, title: str, page_type: str, body_md: str,
                 tags=None, sources=None, confidence: str = "",
-                actor: str = AGENT_ACTOR, contested: bool = False, contradictions=None,
-                analysis: AnalysisSpec | None = None, status: str = "draft", author_id: int | None = None) -> str:
+                actor: str = AGENT_ACTOR, contested: bool = False, contradictions=None) -> str:
     """建页。actor 由 @_tool 包装函数从 AgentContext 取（见 _actor_label）。
 
     confidence 空串=模型没给，按来源广度兜底（见 app/wiki/quality.py）；给了就用它。
@@ -636,8 +634,6 @@ def _write_page(conn: sqlite3.Connection, title: str, page_type: str, body_md: s
     if len((title or "").strip()) > TITLE_MAX:
         return f"{FAIL_TEXT}标题太长了（最长 {TITLE_MAX} 字），改短一点再来"
     extra = None
-    if page_type in ("query", "comparison") or analysis is not None:
-        sources, extra = prepare_analysis(conn, page_type, body_md, sources, analysis, status, author_id=author_id)
     level = normalize_confidence(confidence) or default_confidence(sources)
     # path=None = create-intent（裁定 R91）：目录与 slug 由 store 在 _CREATE_LOCK 内按
     # title + page_type 发；同标题的页已存在就返 failed「这一页已存在」，绝不静默编辑。
@@ -648,8 +644,6 @@ def _write_page(conn: sqlite3.Connection, title: str, page_type: str, body_md: s
         contradictions=contradictions, extra=extra,
     )
     out = _result(conn, res, doing="建")
-    if res.get("ok") and extra and extra.get("status") == "draft":
-        out += "\n已保存草稿，未进入发布索引与检索；完善条件后由建设账号发布。"
     # 写成功就把"本页有没有断链"当场告诉模型：不要等它攒到收尾 lint 才发现，也不要在
     # 这里拒写（允许先建页后建目标页，见 _link_warnings 的说明）。
     return out + (_link_warnings(res["path"]) if res["ok"] else "")
@@ -658,8 +652,7 @@ def _write_page(conn: sqlite3.Connection, title: str, page_type: str, body_md: s
 def _edit_page(conn: sqlite3.Connection, path: str, body_md: str,
                tags=None, sources=None, base_commit: str = "",
                confidence: str | None = None,
-               actor: str = AGENT_ACTOR, contested: bool | None = None, contradictions=None,
-               analysis: AnalysisSpec | None = None, status: str | None = None) -> str:
+               actor: str = AGENT_ACTOR, contested: bool | None = None, contradictions=None) -> str:
     """改页。actor 由 @_tool 包装函数从 AgentContext 取（见 _actor_label）。
 
     2026-10-30：base_commit 改成**必填**。不带版本号的整页重写会静默覆盖别人刚改的
@@ -687,25 +680,7 @@ def _edit_page(conn: sqlite3.Connection, path: str, body_md: str,
         level = (page.get("confidence") or "").strip().lower() or default_confidence(final_sources)
     else:
         level = normalize_confidence(confidence)
-    extra = None
-    if page["page_type"] in ("query", "comparison") or analysis is not None or page.get("metadata", {}).get("analysis"):
-        final_sources, extra = prepare_analysis(conn, page["page_type"], body_md, final_sources, analysis,
-            status or page.get("metadata", {}).get("status", "draft"), previous=page)
-    if status is not None and extra is None:
-        extra = dict(page.get("metadata", {}))
-        if status == "published":
-            pages = store.all_pages()
-            resolve = store.link_resolver(pages)
-            targets = {resolve(t) for t, _ in store.iter_wikilinks(body_md)} - {None, page["path"]}
-            if len(targets) < 2 or any(resolve(t) is None for t, _ in store.iter_wikilinks(body_md)):
-                raise ValueError("发布前需至少两个有效出链且没有断链")
-            if any(pages[target].extra.get("status") == "draft" for target in targets):
-                raise ValueError("关联页面尚为草稿；补齐整批关系后重试摄入任务，或改用已发布依据")
-            if not final_sources or any(not canonical_url(source) and source_file(settings.wiki_dir, source) is None for source in final_sources):
-                raise ValueError("发布前需要真实存在的来源")
-        extra["status"] = status
-        if status == "published":
-            extra.pop("review_notes", None)
+    extra = dict(page.get("metadata", {}))
     res = store.write_page_sync(
         conn, path=page["path"], title=page["title"], page_type=page["page_type"],
         body_md=body_md,
@@ -863,7 +838,7 @@ def read(ctx: RunContextWrapper, path: str, offset: int = 0, limit: int = READ_M
     """读一页 wiki 正文、一份 raw 材料、特殊文件，或一份上传材料的解析文本。
 
     path 的形状（都是 vault 相对路径）：
-    - `entities/{slug}.md` / `concepts/…` / `comparisons/…` / `queries/…` / `summaries/…`：
+    - `entities/{slug}.md` / `concepts/…` / `comparisons/…` / `queries/…`：
       wiki 页面，path 从 list_wiki、search 或 read 的结果里拿；
     - `raw/uploads/{编号}-{文件名}.md`：raw 层里的材料原文（frontmatter + 全文）；
     - `index.md` / `SCHEMA.md` / `log.md`：自动维护的索引、领域约定与行动日志；
@@ -906,27 +881,24 @@ def search(ctx: RunContextWrapper, query: str,
 
 @_tool(FAIL_TEXT)
 def write_page(ctx: RunContextWrapper, title: str,
-               page_type: Literal["entity", "concept", "comparison", "query", "summary"],
+               page_type: Literal["entity", "concept", "comparison", "query"],
                body_md: str,
                tags: list[str] | None = None,
                sources: list[str] | None = None,
                confidence: str = "", contested: bool = False,
-               contradictions: list[str] | None = None, analysis: AnalysisSpec | None = None,
-               status: Literal["draft", "published"] = "draft") -> str:
+               contradictions: list[str] | None = None) -> str:
     """建一页新的知识库页面。path（目录 + slug）由服务端按 page_type 发，不要自己编。
 
     正文是普通 markdown：页面互链用 [[slug]]，来源写在 frontmatter 的 sources 里
-    （工具参数 sources），分析页使用 analysis 的段落来源映射；不要求旧式逐句核验。
+    （工具参数 sources）；多来源综合可用段落来源标记 `^[raw/路径]`。
     同标题的页已经存在时也会退回，那时改用 edit_page 去改那一页。
     正文至少挂 2 个 [[wikilink]] 把新页接进网络。
 
-    没有建设权限的账号只允许新建沉淀型页面（page_type 为 query / comparison /
-    summary 的分析草稿）；entity / concept 和发布会被拒绝；只能编辑自己的草稿，不能删除页面。
+    没有建设权限的账号只允许新建 query / comparison 两类沉淀页；entity / concept 会被拒绝。
 
     Args:
         title: 页标题，最长 120 字。
-        page_type: 页的类型，决定目录。entity=实体，concept=概念，comparison=对比，
-            query=查询，summary=摘要。
+        page_type: 页的类型，决定目录。entity=实体，concept=概念，comparison=对比，query=查询。
         body_md: 正文（markdown），页面互链用 [[slug]]；不要写句子级引注。
         tags: 标签清单，只能取 SCHEMA.md 里 tag taxonomy 的值；可省略。
         sources: 来源清单，写 raw 路径或 URL（例如 raw/articles/x.md）；可省略。
@@ -936,13 +908,10 @@ def write_page(ctx: RunContextWrapper, title: str,
     """
     if getattr(ctx.context, "progress", {}).get("repair_paths") is not None:
         return f"{FAIL_TEXT}自动修复不新建历史断链目标；请保留待审，不能凭空补内容"
-    if not _can_build(ctx) and (page_type not in READONLY_WRITE_TYPES or status == "published"):
+    if not _can_build(ctx) and page_type not in READONLY_WRITE_TYPES:
         return _denied_text("建这一类页面")
-    if not _can_build(ctx) and page_type == "summary" and analysis is None:
-        analysis = AnalysisSpec()
     return _guard(FAIL_TEXT, _write_page, _conn(ctx), title, page_type, body_md,
-                  tags, sources, confidence, _actor_label(ctx), contested, contradictions, analysis, status,
-                  getattr(ctx.context, "user_id", None))
+                  tags, sources, confidence, _actor_label(ctx), contested, contradictions)
 
 
 @_tool(FAIL_TEXT)
@@ -951,8 +920,7 @@ def edit_page(ctx: RunContextWrapper, path: str, body_md: str,
               sources: list[str] | None = None,
               base_commit: str = "",
               confidence: str | None = None, contested: bool | None = None,
-              contradictions: list[str] | None = None, analysis: AnalysisSpec | None = None,
-              status: Literal["draft", "published"] | None = None) -> str:
+              contradictions: list[str] | None = None) -> str:
     """改一页已有的知识库页面：整页正文换掉，可顺带改标签/来源。
 
     path 从 list_wiki、search 或 read 的结果里拿（例如 entities/baoming.md）；
@@ -961,7 +929,7 @@ def edit_page(ctx: RunContextWrapper, path: str, body_md: str,
     tags / sources 省略时保留原值。base_commit 传 read 给出的现行版本号，
     有人先改过就会退回，那时重新 read 一遍再改；留空会被拒绝（工具会拒绝空版本号）。
 
-    使用账号只允许编辑自己的分析草稿；发布和修改已发布页需要建设权限。
+    使用账号只允许编辑 query / comparison 页；修改 entity / concept 需要建设权限。
 
     Args:
         path: 要改哪一页，例如 entities/baoming.md。
@@ -977,14 +945,10 @@ def edit_page(ctx: RunContextWrapper, path: str, body_md: str,
         return f"{FAIL_TEXT}自动修复仅限本轮改动及受影响页面；其他问题已保留待审"
     if not _can_build(ctx):
         page = store.get_page(_conn(ctx), path)
-        metadata = (page or {}).get("metadata", {})
-        uid = getattr(ctx.context, "user_id", None)
-        if not (page and page["page_type"] in READONLY_WRITE_TYPES
-                and metadata.get("status") == "draft" and uid is not None
-                and metadata.get("author_id") == str(uid) and status != "published"):
+        if not (page and page["page_type"] in READONLY_WRITE_TYPES):
             return _denied_text("修改已有页面")
     return _guard(FAIL_TEXT, _edit_page, _conn(ctx), path, body_md,
-                  tags, sources, base_commit, confidence, _actor_label(ctx), contested, contradictions, analysis, status)
+                  tags, sources, base_commit, confidence, _actor_label(ctx), contested, contradictions)
 
 
 def _delete_page(conn: sqlite3.Connection, path: str, base_commit: str = "",

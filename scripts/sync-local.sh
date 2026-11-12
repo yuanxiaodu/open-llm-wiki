@@ -23,7 +23,7 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=lib/env.sh
 . "$REPO/scripts/lib/env.sh"
 
-VAULT="${WIKI_LOCAL_VAULT:-$HOME/wiki}"
+VAULT="${WIKI_LOCAL_VAULT:-${WIKI_PATH:-$HOME/wiki}}"
 REMOTE="${WIKI_REMOTE:-origin}"
 BRANCH="${WIKI_BRANCH:-main}"
 MESSAGE=""

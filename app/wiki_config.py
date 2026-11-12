@@ -54,7 +54,6 @@ DEFAULT_TYPE_LABELS: dict[str, str] = {
     "concept": "概念",
     "comparison": "对比",
     "query": "查询",
-    "summary": "摘要",
 }
 DEFAULT_AGENT_PERSONA = "你是这个知识库唯一的维护智能体。说话短，先查再写。"
 DEFAULT_AGENT_RULES = ""

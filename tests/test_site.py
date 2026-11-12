@@ -76,7 +76,7 @@ def test_site_api_is_public_and_returns_config(client):
     assert body["name"] == settings.site_name
     assert body["name"].strip() == body["name"]
     assert body["plugins"] == []
-    assert set(body["type_labels"]) == {"entity", "concept", "comparison", "query", "summary"}
+    assert set(body["type_labels"]) == {"entity", "concept", "comparison", "query"}
     assert set(body["welcome"]) == {"build", "readonly"}
 
 

@@ -23,7 +23,7 @@ def test_skill_is_the_bound_file_not_a_runtime_skill_library():
     assert prompt.SKILL_PATH.is_file()
     raw = prompt.SKILL_PATH.read_text(encoding="utf-8")
     assert raw.startswith("---\n")
-    assert prompt.SKILL_VERSION == "1.8.0"
+    assert prompt.SKILL_VERSION == "2.0.0"
     assert prompt.SKILL_BODY
     # frontmatter 不进 BASE_STYLE：模型不该看到 version/tools 这些元数据行。
     assert "version:" not in prompt.BASE_STYLE

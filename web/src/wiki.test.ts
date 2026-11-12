@@ -193,7 +193,6 @@ describe("path/URL/路由小工具", () => {
     expect(dirLabel("concepts")).toBe("概念");
     expect(dirLabel("comparisons")).toBe("对比");
     expect(dirLabel("queries")).toBe("查询");
-    expect(dirLabel("summaries")).toBe("摘要");
     expect(dirLabel("misc")).toBe("misc");
   });
 
@@ -253,7 +252,6 @@ describe("pageTypeLabel / normalizeTags", () => {
     ["concept", "概念"],
     ["comparison", "对比"],
     ["query", "查询"],
-    ["summary", "摘要"],
     ["topic", "主题"],
     ["outline", "其他"],
     ["mystery", "其他"],
@@ -276,7 +274,6 @@ describe("buildWikiTree：物理目录树", () => {
     page({ path: "concepts/baz.md", slug: "baz", title: "概念丙", page_type: "concept" }),
     page({ path: "comparisons/c1.md", slug: "c1", title: "对比丁", page_type: "comparison" }),
     page({ path: "queries/q1.md", slug: "q1", title: "查询戊", page_type: "query" }),
-    page({ path: "summaries/s1.md", slug: "s1", title: "摘要己", page_type: "summary" }),
     page({ path: "misc/x.md", slug: "x", title: "杂项" }),
     page({ path: "root-page.md", slug: "root-page", title: "根页" }),
   ];
@@ -289,8 +286,7 @@ describe("buildWikiTree：物理目录树", () => {
       "概念",
       "对比",
       "查询",
-      "摘要",
-      "misc",
+        "misc",
       "根页",
     ]);
     expect(tree[1].kind).toBe("folder");

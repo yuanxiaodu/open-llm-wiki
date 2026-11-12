@@ -10,11 +10,14 @@ WIKI_DIR/
   index.md         # 目录；跟踪、同步
   log.md           # 追加式行动日志；跟踪，merge=union
   raw/
+    articles/
+    papers/
+    transcripts/
+    assets/
   entities/
   concepts/
   comparisons/
   queries/
-  summaries/
 ```
 
 ## 方式一：应用直接读写 Obsidian vault

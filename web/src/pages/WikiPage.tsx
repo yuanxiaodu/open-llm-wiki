@@ -6,7 +6,6 @@ import { useSiteConfig } from "../site.ts";
 import { actorLabel } from "../activity.ts";
 import { useHeadingAnchors } from "../headings.ts";
 import {
-  analysisMetadata,
   findWikiPage,
   formatStamp,
   normalizeWikiDetail,
@@ -85,7 +84,6 @@ export function WikiPage() {
     };
   }, [rawPath, loadDetail]);
 
-  const analysis = analysisMetadata(detail?.metadata);
   const meta = findWikiPage(pages, rawPath);
   const updated = formatStamp(detail?.updated_at ?? meta?.updated_at ?? null);
   const actor = meta?.actor ?? null;
@@ -146,7 +144,6 @@ export function WikiPage() {
             ← 索引
           </Link>
           <h1 className="vault-title">{title}</h1>
-          {detail.status === "draft" && <p className="banner warn" role="status">知识草稿，尚未发布；请核对依据、关联页面、适用条件与不确定性。</p>}
           {detail.contested && <p className="banner warn" role="status">存在尚未解决的争议，请同时查阅双方观点和来源。</p>}
           <div className="vault-meta">
             <span className="pill">{pageTypeLabel(detail.page_type, type_labels)}</span>
@@ -184,18 +181,6 @@ export function WikiPage() {
             )}
           </div>
 
-          {analysis.question && <section className="wiki-backlinks" aria-label="分析范围与依据">
-            <h2>分析范围与依据</h2>
-            <p>问题：{analysis.question}</p><p>适用条件：{analysis.scope}</p>
-            <p>分析时间：{analysis.asOf} · 不确定性：{analysis.uncertainties}</p>
-            <ul>{analysis.basis.map((basis) => <li key={basis.path}>
-              <Link to={wikiPageHref(basis.path)}>{basis.path}</Link> · <Link to={`/wiki/versions?path=${encodeURIComponent(basis.path)}`}>依据版本 {basis.head.slice(0, 12)}</Link>
-            </li>)}</ul>
-            {analysis.paragraphs.map((item, i) => <p key={i}>{item.paragraph}：{item.sources.map((source, j) =>
-              <span key={source}>{j > 0 && "、"}{/^https?:\/\//i.test(source)
-                ? <a href={source} rel="noreferrer" target="_blank">{source}</a>
-                : <Link to={`/wiki/source?path=${encodeURIComponent(source)}`}>{source}</Link>}</span>)}</p>)}
-          </section>}
           <div className="wbody" ref={articleRef}>
             <MarkdownBody markdown={body} />
           </div>

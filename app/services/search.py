@@ -129,8 +129,6 @@ def index_page_path(conn: sqlite3.Connection, rel: str) -> bool:
         page = serialize.parse_md(_page_slug(rel), path.read_text(encoding="utf-8"))
     except ValueError:
         return False
-    if page.extra.get("status") == "draft":
-        return False
     for piece, start in enumerate(range(0, max(len(page.body_md), 1), MAX_PIECE)):
         conn.execute(
             "INSERT INTO fts_shared (kind, ref_id, piece, heading, body)"

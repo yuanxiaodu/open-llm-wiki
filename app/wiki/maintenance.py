@@ -30,7 +30,6 @@ def maintain(*, actor: str = "维护", action: str | None = None, subject: str =
         if len(pages) > 200:
             groups = defaultdict(list)
             for rel, page in pages.items():
-                if page.extra.get("status") == "draft": continue
                 for tag in page.tags or ["待分类"]:
                     groups[tag].append(page)
             lines = ["# 主题地图", "", "按标签导航；同组不表示观点一致。"]

@@ -199,19 +199,19 @@ def test_read_special_files_and_raw(conn, vault, member):
 
     _write(conn, slug="baoming", body_md="漏单少了。")
     index = _call(read, conn, {"path": "index.md"})
-    assert "知识库索引" in index and "[[baoming|报名流程线上化]]" in index
+    assert "Wiki Index" in index and "[[baoming|报名流程线上化]]" in index
     schema = _call(read, conn, {"path": "SCHEMA.md"})
     from app.wiki_config import get_config
 
-    assert "## tags" in schema and f"- {get_config().tags[0]}" in schema
+    assert "## Tag Taxonomy" in schema and "- 概念" in schema
     log = _call(read, conn, {"path": "log"})
     assert "## [" in log and "baoming" in log
 
     upload_id = _upload(conn, member.user_id, "报告.pdf", "第三章 报名流程\n漏单降到 1 单")
     raw_path = _ingest_raw(conn, upload_id, "报告.pdf", "第三章 报名流程\n漏单降到 1 单")
-    assert raw_path == f"raw/uploads/{upload_id}-pdf.md"
+    assert raw_path == f"raw/papers/{upload_id}-pdf.md"
     raw = _call(read, conn, {"path": raw_path})
-    assert "source_file: 报告.pdf" in raw and "漏单降到 1 单" in raw
+    assert "漏单降到 1 单" in raw and "source_file:" not in raw
     # 旧 upload 入口顺带告诉模型 raw 归档路径（sources 要写它）
     upload = _call(read, conn, {"path": f"upload/{upload_id}"})
     assert raw_path in upload
@@ -475,7 +475,7 @@ def test_bad_enum_value_is_chinese_whitelist_not_spelled_out_letters(conn, tmp_w
         "title": "T", "page_type": "novel", "body_md": "x",
     })
     assert out.startswith("没写成：") and "page_type" in out and "不合法" in out
-    assert "entity、concept、comparison、query、summary" in out, out
+    assert "entity、concept、comparison、query" in out, out
     assert store.list_pages(conn) == []
 
 
@@ -647,7 +647,7 @@ def test_ingest_url_tool_stores_material_and_reports_next_step(conn, tmp_wiki, m
     assert out.startswith("已摄入：招聘要求解读"), out
     assert "upload_id：" in out
     upload_id = int(re.search(r"upload_id：(\d+)", out).group(1))
-    assert "raw 归档：" in out and f"raw/uploads/{upload_id}-" in out
+    assert "raw 归档：" in out and f"raw/articles/{upload_id}-" in out
     assert "下一步" in out
     # 网页摄入的 raw 提交也要记到触发这一轮的人名下（不是写死的 AGENT_ACTOR）。
     assert repo.log()[0].actor == "张三", repo.log()[0]

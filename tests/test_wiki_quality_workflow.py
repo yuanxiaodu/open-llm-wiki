@@ -10,7 +10,7 @@ from fastapi import UploadFile
 from app.agent import tools
 from app.config import settings
 from app.services import document_ingest, uploads, web_ingest
-from app.wiki import analysis, lint, provenance, quality, store
+from app.wiki import lint, provenance, quality, store
 from tests.test_agent_tools import _call
 from tests.test_document_ingest import _upload
 
@@ -36,8 +36,7 @@ def test_body_tampering_is_detected_independently_of_original_record(conn, vault
     rel = raw(conn, member)
     path = settings.wiki_dir / rel
     meta, body = provenance.split_raw(path.read_text())
-    assert meta["content_sha256"] == provenance.content_hash(body)
-    assert meta["sha256"] != meta["original_sha256"]  # archived text includes canonical newline
+    assert meta["sha256"] == provenance.content_hash(body)
     path.write_text(path.read_text().replace("材料原文", "被篡改的正文"))
     report = lint.lint(conn)
     assert any(f["code"] == "raw_drift" and f["path"] == rel for f in report["findings"])
@@ -55,10 +54,10 @@ def test_legacy_citations_are_not_page_links():
 
 def test_same_source_and_derivative_do_not_upgrade_confidence(conn, vault, member):
     rel = raw(conn, member)
-    other = settings.wiki_dir / "raw/uploads/derivative.md"
+    other = settings.wiki_dir / "raw/articles/derivative.md"
     other.write_text(f"---\nderived_from: {rel}\n---\n\n笔记\n")
-    assert len(quality.independent_sources([rel, "raw/uploads/derivative.md"])) == 1
-    assert quality.confidence_for([rel, "raw/uploads/derivative.md"], "high") == "medium"
+    assert len(quality.independent_sources([rel, "raw/articles/derivative.md"])) == 1
+    assert quality.confidence_for([rel, "raw/articles/derivative.md"], "high") == "medium"
     assert quality.default_confidence([rel, "https://other.example/"]) == "medium"
 
 
@@ -87,31 +86,6 @@ def test_long_page_tail_is_searchable(conn, vault):
     from app.services.search import search
     page(conn, "长页", body="前文" * 12000 + "后文罕见关键词")
     assert search(conn, "后文罕见关键词", kinds=("page",))
-
-
-def test_draft_is_versioned_but_not_searchable_or_published_in_index(conn, vault):
-    out = _call(tools.write_page, conn, {"title": "独有比较分析", "page_type": "comparison", "body_md": "独有比较分析"})
-    assert out.startswith("已生效")
-    p = next(p for p in store.list_pages(conn) if p["title"] == "独有比较分析")
-    assert p["status"] == "draft"
-    assert not conn.execute("SELECT 1 FROM fts_shared WHERE kind='page' AND ref_id=?", (p["path"],)).fetchone()
-    assert "独有比较分析" not in (settings.wiki_dir / "index.md").read_text()
-    rejected = _call(tools.write_page, conn, {"title": "缺依据不能发布", "page_type": "query", "body_md": "结论", "status": "published"})
-    assert "发布条件未满足" in rejected
-
-
-def test_publication_inherits_sources_and_records_basis_versions(conn, vault, member):
-    r = raw(conn, member)
-    a, b = page(conn, "依据甲", [r]), page(conn, "依据乙", [r])
-    spec = analysis.AnalysisSpec(question="两者差异？", scope="同一条件", as_of="2026-11-08",
-            basis_paths=[a["path"], b["path"]], basis_versions=[{"path": a["path"], "head": a["head"]}, {"path": b["path"], "head": b["head"]}], dimensions=["成本", "效果"], uncertainties="未测量长期效果")
-    body = f"|维度|甲|乙|\n|---|---|---|\n|成本|未知|未知|\n[[{a['slug']}]] [[{b['slug']}]]"
-    out = _call(tools.write_page, conn, {"title": "统一条件比较", "page_type": "comparison", "body_md": body,
-                "status": "published", "analysis": spec.model_dump()})
-    assert out.startswith("已生效"), out
-    p = next(p for p in store.all_pages().values() if p.title == "统一条件比较")
-    assert p.sources == [r]
-    assert a["head"] in p.extra["basis_versions"]
 
 
 def test_scoped_health_does_not_pull_in_unrelated_historical_errors(conn, vault):
@@ -192,34 +166,12 @@ def test_unacknowledged_merge_retains_original_and_candidate(conn, vault, member
     assert conn.execute("SELECT status FROM ingest_candidates WHERE job_id=?", (job["job_id"],)).fetchone()[0] == "needs_review"
 
 
-def test_restricted_member_can_repair_only_their_own_draft(conn, vault, member):
-    out = _call(tools.write_page, conn, {"title": "自己的分析草稿", "page_type": "query", "body_md": "初稿"},
-                can_build_wiki=False, user_id=member.user_id)
-    assert out.startswith("已生效")
-    rel = next(rel for rel, p in store.all_pages().items() if p.title == "自己的分析草稿")
-    p = store.get_page(conn, rel)
-    args = {"path": rel, "body_md": "修订后的草稿", "base_commit": p["head"]}
-    assert _call(tools.edit_page, conn, args, can_build_wiki=False, user_id=member.user_id+1).startswith("没写成")
-    assert _call(tools.edit_page, conn, {**args, "status": "published"}, can_build_wiki=False, user_id=member.user_id).startswith("没写成")
-    assert _call(tools.edit_page, conn, args, can_build_wiki=False, user_id=member.user_id).startswith("已生效")
-    assert store.get_page(conn, rel)["body_md"] == "修订后的草稿"
-
-
 def test_external_file_edit_invalidates_parsed_page_cache(conn, vault):
     p = page(conn, "缓存页面", body="第一版")
     assert store.all_pages()[p["path"]].body_md == "第一版"
     path = settings.wiki_dir / p["path"]
     path.write_text(path.read_text().replace("第一版", "第二版"))
     assert store.all_pages()[p["path"]].body_md == "第二版"
-
-
-def test_legacy_analysis_needs_publication_review(conn, vault):
-    result = store.write_page_sync(conn, title="历史查询", page_type="query",
-                                  body_md="保留历史结论", actor="测试")
-    conn.commit()
-    assert result["ok"]
-    findings = lint.lint(conn)["findings"]
-    assert any(f["code"] == "analysis_contract" and f["path"] == result["path"] for f in findings)
 
 
 def test_log_rotation_preserves_page_audit_coverage(conn, vault):
@@ -232,44 +184,6 @@ def test_log_rotation_preserves_page_audit_coverage(conn, vault):
     assert list(settings.wiki_dir.glob("log-*.md"))
     assert log.read_text().count("## [") < 500
     assert not any(f["code"] == "log_coverage" and f["path"] == p["path"] for f in lint.lint(conn)["findings"])
-
-
-def test_unlinked_ingest_stays_draft_instead_of_becoming_searchable_fact(conn, vault, member, monkeypatch):
-    monkeypatch.setattr(document_ingest, "_spawn", lambda job_id: None)
-    monkeypatch.setattr(document_ingest, "_call_model", lambda _: {"pages": [{"title": "未接入网络的新主题", "page_type": "concept", "body_md": "来源里的事实", "tags": []}]})
-    uid = _upload(conn, member.user_id, "来源里的事实")
-    job = document_ingest.start_job(conn, uid, member.user_id)
-    document_ingest._run_job(job["job_id"])
-    p = next(p for p in store.list_pages(conn) if p["title"] == "未接入网络的新主题")
-    assert p["status"] == "draft"
-    assert not conn.execute("SELECT 1 FROM fts_shared WHERE kind='page' AND ref_id=?", (p["path"],)).fetchone()
-    job = document_ingest.get_job(conn, job["job_id"])
-    assert job["quality_status"] == "needs_review" and not job["knowledge_complete"]
-
-
-def test_mutually_linked_topics_publish_after_batch_graph_validation(conn, vault, member, monkeypatch):
-    monkeypatch.setattr(document_ingest, "_spawn", lambda job_id: None)
-    titles = ["主题甲", "主题乙", "主题丙"]
-    monkeypatch.setattr(document_ingest, "_call_model", lambda _: {"pages": [{"title": t, "page_type": "concept", "body_md": "事实。" + " ".join(f"[[{other}]]" for other in titles if other != t), "tags": []} for t in titles]})
-    uid = _upload(conn, member.user_id, "事实。")
-    job = document_ingest.start_job(conn, uid, member.user_id)
-    document_ingest._run_job(job["job_id"])
-    assert len(store.all_pages()) == 3
-    assert all(p.extra.get("status") == "published" for p in store.all_pages().values())
-    assert conn.execute("SELECT count(*) FROM fts_shared WHERE kind='page'").fetchone()[0] == 3
-    job = document_ingest.get_job(conn, job["job_id"])
-    assert job["structural_complete"] and not job["knowledge_complete"]
-    assert job["report"]["metrics"]["model_calls"] == 1
-
-
-def test_source_version_change_blocks_analysis_publication(conn, vault, member):
-    r = raw(conn, member)
-    a, b = page(conn, "版本依据甲", [r]), page(conn, "版本依据乙", [r])
-    spec = analysis.AnalysisSpec(question="问题", scope="条件", as_of="2026-11-08", uncertainties="未发现",
-        basis_paths=[a["path"], b["path"]], basis_versions=[{"path": a["path"], "head": a["head"]}, {"path": b["path"], "head": b["head"]}])
-    page(conn, a["title"], [r], "依据已经更新", path=a["path"], base_commit=a["head"])
-    with pytest.raises(ValueError, match="依据版本缺失或已变化"):
-        analysis.prepare(conn, "query", f"[[{a['slug']}]] [[{b['slug']}]]", [r], spec, "published")
 
 
 def test_cancelled_identity_does_not_poison_reused_task_id(conn, vault, member):
@@ -301,7 +215,7 @@ def test_pasted_text_archives_actual_message_and_enforces_visibility(conn, vault
 
 def test_identical_text_at_different_urls_is_one_evidence_identity(conn, vault):
     directory = settings.wiki_dir / "raw/articles"
-    directory.mkdir(parents=True)
+    directory.mkdir(parents=True, exist_ok=True)
     for filename, url in (("a", "https://a.example/post"), ("b", "https://b.example/copy")):
         (directory / f"{filename}.md").write_text(f"---\nsource_url: {url}\n---\n\n完全相同的转载正文\n")
     refs = ["raw/articles/a.md", "raw/articles/b.md"]
@@ -313,17 +227,6 @@ def test_contradiction_list_prevents_high_even_when_flag_is_omitted(conn, vault,
     a, b = raw(conn, member, "a.txt", "来源甲"), raw(conn, member, "b.txt", "来源乙")
     p = page(conn, "有矛盾的论断", [a, b], confidence="high", contradictions=["other-page"])
     assert p["contested"] and p["confidence"] == "medium"
-
-
-def test_builder_can_publish_a_repaired_core_draft(conn, vault, member):
-    r = raw(conn, member)
-    a, b = page(conn, "发布锚点甲", [r]), page(conn, "发布锚点乙", [r])
-    draft = page(conn, "待修核心草稿", [r], extra={"status": "draft"})
-    out = _call(tools.edit_page, conn, {"path": draft["path"], "base_commit": draft["head"],
-            "body_md": f"有依据的内容。[[{a['slug']}]] [[{b['slug']}]]", "status": "published"})
-    assert out.startswith("已生效"), out
-    assert store.get_page(conn, draft["path"])["metadata"]["status"] == "published"
-    assert conn.execute("SELECT 1 FROM fts_shared WHERE kind='page' AND ref_id=?", (draft["path"],)).fetchone()
 
 
 def test_automatic_repair_cannot_delete_content(conn, vault):

@@ -1,6 +1,6 @@
 ---
 name: llm-wiki
-version: 1.8.0
+version: 2.0.0
 scope: 本项目绑定的唯一技能；构建期装配，不做运行时 skill 库加载
 tools: read, list_wiki, search, write_page, edit_page, delete_page, lint, ingest_url, ingest_document, web_search, ingest_text
 ---
@@ -40,7 +40,7 @@ read("log.md") 看最近动作。超过 100 页的库，动笔前先 search 一�
   同一件事只问一次；有多个合理方案就自己选一个并说明理由，不要用"要不要我开始 / 你选 A 还是 B"
   结束一轮。真正需要人拍板的只有：要删什么、要覆盖谁的改动、范围大到可能动十几页。
 - **查询结果是否沉淀由你自己判断**：成体系、可复用的回答就直接新建
-  query/comparison/summary 草稿（使用账号可创建并修订自己的草稿；发布需要建设权限），标题自己拟，不要把"要不要存成页 /
+  query/comparison 页（使用账号可创建并修订），标题自己拟，不要把"要不要存成页 /
   标题你定"交回给用户；不值得沉淀就只回答，连保存建议都别提。
 - **一轮必须真的推进**：动手类请求（整理、合并、修链、建枢纽页、体检）至少交付 1 页改动或
   1 个可复核的结论；不要以"下一轮再……"收尾。确实做不到，就说清卡在哪一条具体事实上。
@@ -83,14 +83,14 @@ read("log.md") 看最近动作。超过 100 页的库，动笔前先 search 一�
 
 ## 页面与标签契约
 
-data/wiki 是物理 vault：SCHEMA.md / index.md / log.md + raw/ + entities|concepts|comparisons|queries|summaries。
-页面 type 只有 entity/concept/comparison/query/summary，目录由 type 决定；type 与 path 创建后不可改。
+data/wiki 是物理 vault：SCHEMA.md / index.md / log.md + raw/{articles,papers,transcripts,assets} + entities|concepts|comparisons|queries。
+页面 type 只有 entity/concept/comparison/query，目录由 type 决定；type 与 path 创建后不可改。
 path 与 slug 由服务端发，不要自己编；slug 是页面文件名去掉 .md 的最后一段，
 不要写目录路径（[[concepts/…]] 会断链）。回复与正文里出现的 `[[...]]` 必须是真实存在的 slug
 或页面标题，不能凭印象造；拿不准就不写。
 tags 只能取 SCHEMA.md 的 tag taxonomy；sources 写 raw 路径或 URL。tags 不要全塞
 「方法论」；一页只选最具体的 1–2 个标签。
-不要手写 frontmatter、index.md、log.md——它们由服务端生成；可以用工具参数设置 contested/contradictions。
+不要手写 frontmatter、index.md、log.md——服务端自动序列化/维护；可以用工具参数设置 contested/contradictions。
 
 ## 摄入覆盖率
 
@@ -98,21 +98,20 @@ tags 只能取 SCHEMA.md 的 tag taxonomy；sources 写 raw 路径或 URL。tags
 - 起任务只表示已受理。稍后根据任务 report 区分处理结束、部分完成、结构待审与语义待审；不要把 done 说成事实全部验证。
 - source_coverage 表示待编译来源，不能为了消除历史警告新造一页或移除来源。
 
-## 查询与比较页发布
+## 查询与比较页
 
-- 普通查找只回答；值得复用才沉淀，先 search 查重。同题优先修订已有分析。
-- write_page 的 analysis 填 question、scope、as_of、basis_paths、basis_versions（read 返回的 path/head）、uncertainties；比较页还要 dimensions（至少两个）及统一维度的表格。
-- basis_paths 是真实 wiki 页；服务端继承原始来源并记录其版本。模型推断、原材料事实、不确定项分开表达。
-- 默认 status="draft"；证据、适用条件与真实互链完整后，建设账号可用 status="published" 发布。
-- 多来源综合用 analysis.paragraph_sources（paragraph 与 sources 列表）标出段落证据。分析草稿不作为已发布知识依据。
-- 使用账号不能发布共享知识，只能编辑 author_id 为自己的草稿；不要反复尝试修改其他人的页。
+- 普通查找只回答；值得复用才沉淀，先 search 查重。同题优先修订已有页。
+- write_page 直接写 query/comparison 页；比较页至少两个统一维度并列表格。
+- 使用账号可以新建/编辑 query/comparison 页，不能建 entity/concept、不能删页。
 - 发现争议时 read 双方及 raw，再传 contested / contradictions；不要默默删掉另一方观点。
 
 ## 来源与写作
 
 - **来源是页级的**：写在 frontmatter 的 `sources`（通过工具的 sources 参数），可以是
-  raw 路径（raw/articles/x.md、raw/uploads/3-notes.md）或网页 URL。不要写句子级引注核验格式。多来源综合可使用轻量段落来源标记或 analysis.paragraph_sources，不需要恢复旧核验系统。
-- 正文里要引述材料原话就直接写出来（可以加引号），不要造 `[^c1]` 这类脚注角标。
+  （不要写句子级引注；多来源段落用 `^[raw/路径]` 标记。）
+  raw 路径（raw/articles/x.md、raw/papers/x.md、raw/transcripts/x.md）或网页 URL。
+- 多来源综合时在对应段落末尾写 `^[raw/路径]` 段落来源标记；路径必须来自 sources。
+  不要写 `[^c1]` 这类脚注角标。
 - 材料可能是 PDF/EPUB/Word/PPT/Excel/图片/网页；PPT/PDF/Word 里的内嵌图片会被视觉描述，
   以 `【第 N 页图片】…` 的形式拼在正文里，可以当作材料内容引用，但不要伪造逐字引文。
 - 矛盾显式记录：正文如实写两说，frontmatter 记 contested: true、contradictions 写对方页 slug。

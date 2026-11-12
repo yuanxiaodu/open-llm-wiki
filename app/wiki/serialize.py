@@ -5,7 +5,7 @@
 
 S5 起 wiki 是 Hermes 标准的物理 vault（`data/wiki/`，Obsidian 可直接打开）：
 
-    SCHEMA.md / index.md / log.md + raw/ + {entities,concepts,comparisons,queries,summaries}/
+    SCHEMA.md / index.md / log.md + raw/ + {entities,concepts,comparisons,queries}/
 
 一页的形状是 `{dir}/{slug}.md`，目录由 `type` 决定（`page_path`），`type` 白名单见 TYPES。
 frontmatter 的唯一写者是本模块的 dump_md，因此 `created`/`updated`/tags/sources 的排序
@@ -20,9 +20,9 @@ from dataclasses import dataclass, field
 from datetime import date
 
 # 旧布局（S5 之前）的 type 白名单：迁移时还要认，新写只认 TYPES。
-LEGACY_TYPES = ("topic", "outline")
+LEGACY_TYPES = ("topic", "outline", "summary")
 
-TYPES = ("entity", "concept", "comparison", "query", "summary")
+TYPES = ("entity", "concept", "comparison", "query")
 
 # frontmatter 的已知键：其余键原样保留到 Page.extra（Obsidian 插件字段不丢）。
 KNOWN_FRONTMATTER = (
@@ -36,15 +36,14 @@ DIRS = {
     "concept": "concepts",
     "comparison": "comparisons",
     "query": "queries",
-    "summary": "summaries",
 }
 
 # vault 根上的特殊文件：不是页面，不进 pages 列表，不可编辑。
 SPECIAL_FILES = ("SCHEMA.md", "index.md", "log.md")
 
-# raw 层：上传材料的原文归档，只读、不可变。
+# raw 层：原生 2.1.0 子目录；上传材料只读、不可变。
 RAW_DIR = "raw"
-RAW_UPLOADS_DIR = "raw/uploads"
+RAW_DIRS = ("raw/articles", "raw/papers", "raw/transcripts", "raw/assets")
 
 _SLUG_SAFE = re.compile(r"[^A-Za-z0-9_-]+")
 _CJK_RE = re.compile(r"[\u3400-\u9fff]")
@@ -244,10 +243,7 @@ def dump_md(p: Page) -> str:
         lines.append("contested: true")
     if p.contradictions:
         lines.append(f"contradictions: {_flow_list(p.contradictions)}")
-    for key in sorted(p.extra):
-        value = " ".join(str(p.extra[key]).split())
-        if value:
-            lines.append(f"{key}: {value}")
+    # 2.1.0 原生 frontmatter 之外不再写扩展键；extra 只用于迁移期读取。
     lines += ["---", "", p.body_md.rstrip()]
     return "\n".join(lines) + "\n"
 
@@ -284,6 +280,9 @@ def parse_md(slug: str, text: str, *, allow_legacy: bool = False) -> Page:
     if allow_legacy:
         if page_type == "topic":
             page_type = "entity"
+        elif page_type == "summary":
+            # 迁移工具会在移动文件时改 type；这里只让旧文件读得出来。
+            page_type = "concept"
     if not title:
         raise PageFormatError("缺 title")
     if page_type not in TYPES and not (allow_legacy and page_type == "outline"):

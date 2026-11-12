@@ -328,7 +328,7 @@ def test_write_path_maintains_index_and_log_in_the_same_commit(client, admin, tm
     index = client.get("/api/wiki/index").json()
     assert index["path"] == "index.md"
     assert "[[maintained-page|Maintained Page]]" in index["body_md"]
-    assert "索引" in index["body_md"]
+    assert "Wiki Index" in index["body_md"]
     assert index["updated_at"]
 
     log = client.get("/api/wiki/log").json()
@@ -342,7 +342,7 @@ def test_special_files_and_lint_routes(client, admin, vault):
     """index/schema/log/lint 四个特殊路由：形状固定，且注册在 `{path:path}` 之前。"""
     schema = client.get("/api/wiki/schema").json()
     assert set(schema) == {"path", "body_md", "updated_at"}
-    assert schema["path"] == "SCHEMA.md" and "## tags" in schema["body_md"]
+    assert schema["path"] == "SCHEMA.md" and "## Tag Taxonomy" in schema["body_md"]
 
     lint = client.get("/api/wiki/lint").json()
     assert set(lint) == {"findings", "summary", "checks", "review_candidates"}

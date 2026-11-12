@@ -132,8 +132,8 @@ def test_write_ok_commits_page_index_log_and_records(conn, tmp_wiki, member):
 
     # index.md：按 type 分节 + 一行 summary；log.md：追加式条目
     index_text = _file(tmp_wiki, "index.md").read_text(encoding="utf-8")
-    assert "总页数：1" in index_text
-    assert "## 实体（1）" in index_text
+    assert "Total pages: 1" in index_text
+    assert "## Entities" in index_text
     assert "- [[baoming|报名流程线上化]] — 漏单降到 1 单。" in index_text
     log_text = _file(tmp_wiki, "log.md").read_text(encoding="utf-8")
     assert "create | 报名流程线上化" in log_text
@@ -151,7 +151,10 @@ def test_write_creates_vault_dirs_on_demand(conn, tmp_wiki):
     res = _write(conn, body_md="正文")
     assert res["ok"]
     assert (tmp_wiki / "entities").is_dir()
-    assert (tmp_wiki / "raw" / "uploads").is_dir()
+    assert (tmp_wiki / "raw" / "articles").is_dir()
+    assert (tmp_wiki / "raw" / "papers").is_dir()
+    assert (tmp_wiki / "raw" / "transcripts").is_dir()
+    assert (tmp_wiki / "raw" / "assets").is_dir()
 
 
 def test_explicit_path_writes_into_that_directory(conn, tmp_wiki):
@@ -1266,8 +1269,8 @@ def test_index_page_path_drops_rows_for_deleted_files(conn, tmp_wiki):
 
 def test_ensure_vault_creates_layout_and_special_files_once(vault, tmp_wiki):
     """ensure_vault 建目录 + SCHEMA/index/log，**一次** commit；再调不产生提交。"""
-    for directory in ("entities", "concepts", "comparisons", "queries", "summaries",
-                      "raw/uploads"):
+    for directory in ("entities", "concepts", "comparisons", "queries",
+                      "raw/articles", "raw/papers", "raw/transcripts", "raw/assets"):
         assert (tmp_wiki / directory).is_dir(), directory
     for name in ("SCHEMA.md", "index.md", "log.md"):
         assert (tmp_wiki / name).is_file(), name
@@ -1275,8 +1278,8 @@ def test_ensure_vault_creates_layout_and_special_files_once(vault, tmp_wiki):
 
     # 2026-11-13 修正：SCHEMA 是 llm-wiki 默认骨架，不再由 wiki.toml 生成。
     assert (tmp_wiki / "SCHEMA.md").read_text(encoding="utf-8").startswith("# Wiki Schema\n")
-    assert "## tags" in (tmp_wiki / "SCHEMA.md").read_text(encoding="utf-8")
-    assert "总页数：0" in (tmp_wiki / "index.md").read_text(encoding="utf-8")
+    assert "## Tag Taxonomy" in (tmp_wiki / "SCHEMA.md").read_text(encoding="utf-8")
+    assert "Total pages: 0" in (tmp_wiki / "index.md").read_text(encoding="utf-8")
     commits = _count_commits(tmp_wiki)
     assert commits == 1
     tracked = _raw_git(tmp_wiki, "ls-files").split()
@@ -1353,7 +1356,6 @@ def test_rebuild_index_groups_by_type(vault, tmp_wiki, conn):
         ("gai", "concept", "概念页", "概念的摘要", []),
         ("dui", "comparison", "对比页", "对比的摘要", []),
         ("cha", "query", "查询页", "查询的摘要", []),
-        ("zhai", "summary", "摘要页", "摘要的摘要", []),
     ):
         res = store.write_page_sync(
             conn, path=serialize.path_for(slug, page_type), title=title,
@@ -1363,12 +1365,12 @@ def test_rebuild_index_groups_by_type(vault, tmp_wiki, conn):
         out.append(res["path"])
 
     text = store.rebuild_index(conn)
-    assert "总页数：5" in text
-    labels = {"entity": "实体", "concept": "概念", "comparison": "对比",
-              "query": "查询", "summary": "摘要"}
+    assert "Total pages: 4" in text
+    labels = {"entity": "Entities", "concept": "Concepts",
+              "comparison": "Comparisons", "query": "Queries"}
     for page_type in serialize.TYPES:
-        assert f"## {labels[page_type]}（1）" in text
-    assert "- [[zhu|主题页]] — 主题的摘要（增长）" in text
+        assert f"## {labels[page_type]}" in text
+    assert "- [[zhu|主题页]] — 主题的摘要" in text
     assert (settings.wiki_dir / "index.md").read_text(encoding="utf-8") == text
     # 特殊文件不是页面
     assert store.get_page(conn, "index.md") is None
@@ -1403,13 +1405,12 @@ def test_ingest_raw_upload_writes_raw_md_log_and_commit(vault, tmp_wiki, conn, m
     ).lastrowid)
     res = store.ingest_raw_upload(conn, up_id, "手册.pdf", "第三章 报名流程\n漏单降到 1 单\n", "张三")
     assert res["ok"] and res["created"] is True
-    rel = f"raw/uploads/{up_id}-pdf.md"
+    rel = f"raw/papers/{up_id}-pdf.md"
     assert res["path"] == rel
     text = (tmp_wiki / rel).read_text(encoding="utf-8")
     assert text.startswith("---\n")
-    assert "source_file: 手册.pdf" in text
-    assert f"upload_id: {up_id}" in text
-    assert "sha256: abc123" in text
+    assert "source_file:" not in text and "upload_id:" not in text
+    assert "sha256: " in text
     assert "ingested: " in text
     assert "漏单降到 1 单" in text
     assert store.read_raw(rel) == text
@@ -1443,7 +1444,7 @@ def test_ingest_raw_upload_refuses_empty_text(vault, tmp_wiki, conn, member):
     res = store.ingest_raw_upload(conn, up_id, "空.pdf", "  \n\t ", "张三")
     assert not res["ok"]
     assert _chinese(res["failed"][0]["note"])
-    assert not list((tmp_wiki / "raw" / "uploads").glob("*.md"))
+    assert not list((tmp_wiki / "raw" / "papers").glob("*.md"))
 
 
 def test_ingest_raw_upload_rolls_back_on_commit_failure(
@@ -1463,15 +1464,15 @@ def test_ingest_raw_upload_rolls_back_on_commit_failure(
     monkeypatch.setattr(repo, "commit", boom)
     res = store.ingest_raw_upload(conn, up_id, "手册.pdf", "正文", "张三")
     assert not res["ok"] and _chinese(res["failed"][0]["note"])
-    assert not list((tmp_wiki / "raw" / "uploads").glob("*.md"))
+    assert not list((tmp_wiki / "raw" / "papers").glob("*.md"))
     assert (tmp_wiki / "log.md").read_bytes() == before_log
     assert _index_and_worktree(tmp_wiki) == ([], "")
 
 
 def test_raw_path_for_sanitizes_names():
-    assert store.raw_path_for(3, "手册.pdf") == "raw/uploads/3-pdf.md"
-    assert store.raw_path_for(3, "../../etc/passwd") == "raw/uploads/3-passwd.md"
-    assert store.raw_path_for(3, "") == "raw/uploads/3-upload.md"
+    assert store.raw_path_for(3, "手册.pdf") == "raw/papers/3-pdf.md"
+    assert store.raw_path_for(3, "../../etc/passwd") == "raw/articles/3-passwd.md"
+    assert store.raw_path_for(3, "") == "raw/articles/3-upload.md"
 
 
 def test_read_raw_refuses_escapes(vault, tmp_wiki):
@@ -1798,7 +1799,7 @@ def test_refresh_raw_upload_replaces_body_keeps_frontmatter(conn, tmp_wiki, memb
     rel = refreshed["path"]
     body = (tmp_wiki / rel).read_text(encoding="utf-8")
     assert body.startswith("---\n")
-    assert "sha256: abc123" in body
+    assert "sha256: " in body and "original_sha256:" not in body
     assert "漏单降到 1 单" in body and "【第 1 页图片】" in body
     # 再刷一次同样的正文：幂等
     again = store.refresh_raw_upload(

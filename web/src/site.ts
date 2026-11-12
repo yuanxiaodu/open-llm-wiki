@@ -43,7 +43,6 @@ export const DEFAULT_TYPE_LABELS: Record<string, string> = {
   concept: "概念",
   comparison: "对比",
   query: "查询",
-  summary: "摘要",
 };
 
 export const DEFAULT_SITE_CONFIG: SiteConfig = {

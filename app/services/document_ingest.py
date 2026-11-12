@@ -120,7 +120,7 @@ def _chunks(text: str) -> list[tuple[int, int, str]]:
 # --- SCHEMA taxonom 与已有页 --------------------------------------------------
 
 
-_TAG_SECTION = re.compile(r"^##\s*tags\s*$", re.MULTILINE)
+_TAG_SECTION = re.compile(r"^##\s+(?:tags|tag taxonomy)\s*$", re.IGNORECASE | re.MULTILINE)
 _NEXT_SECTION = re.compile(r"^##\s+", re.MULTILINE)
 
 
@@ -186,7 +186,7 @@ def _prompt_messages(doc_title: str, chunk: str, index: int, total: int,
     tags = "、".join(taxonomy) if taxonomy else "（SCHEMA 里没有 taxonomy，tags 一律留空）"
     schema = (
         '{"pages":[{"title":"页面标题（2-120 字）",'
-        '"page_type":"entity|concept|comparison|query|summary",'
+        '"page_type":"entity|concept|comparison|query",'
         '"tags":["从 taxonomy 里选，可空"],'
         '"target_path":"更新已有主题时填真实 path，新主题留空",'
         '"body_md":"本块可支持的主题内容；可用 [[已有页标题]] 互链",'
@@ -201,8 +201,9 @@ def _prompt_messages(doc_title: str, chunk: str, index: int, total: int,
         f"1. 只提炼材料核心主题或已有多来源关注的主题；路过的名字、细节不建页，同主题先更新；不确定就保留待审。\n"
         f"2. 按主题整合完整知识，不按事实句数凑页；同主题给 target_path，保留已有事实，冲突明确列两说。\n"
         f"3. sources 写这一块材料的 raw 路径（不知道就留空）；不要编造出处。\n"
-        f"4. page_type 只许 entity/concept/comparison/query/summary 五种。\n"
-        f"5. 最多输出 {MAX_PAGES_PER_CHUNK} 个主题候选（后续统一合并）；这一块没有值得写的事实就输出 {{\"pages\":[]}}。\n\n"
+        f"4. page_type 只许 entity/concept/comparison/query 四种。\n"
+        f"5. 多来源综合时在对应段落末尾写 `^[raw/路径]` 段落来源标记（路径来自 sources）；不要写 `[^c1]` 脚注。\n"
+        f"6. 最多输出 {MAX_PAGES_PER_CHUNK} 个主题候选（后续统一合并）；这一块没有值得写的事实就输出 {{\"pages\":[]}}。\n\n"
         f"输出 JSON 的形状：\n{schema}\n\n"
         f"材料块正文：\n<<<\n{chunk}\n>>>"
     )
@@ -665,12 +666,6 @@ def _compile_topic(conn, page: dict, raw_rel: str | None, actor: str, title: str
         missing = [t for t, _ in store.iter_wikilinks(body) if resolve_existing(t) is None]
         if len(linked) < 2 or missing:
             return {"ok": False, "path": target, "note": "合并候选尚有断链或少于两个有效出链，保留旧页待补链复核"}
-    else:
-        extra["status"] = "draft"
-        extra["review_notes"] = "摄入候选，完成关系检查后发布"
-    if page_type in ("query", "comparison"):
-        from ..wiki.analysis import prepare
-        sources, extra = prepare(conn, page_type, body, sources, None, "draft", previous=old)
     result = store.write_page_sync(
         conn, path=target, title=old["title"] if old else page["title"], page_type=page_type,
         body_md=body, actor=actor, base_commit=old["head"] if old else None,
@@ -678,7 +673,6 @@ def _compile_topic(conn, page: dict, raw_rel: str | None, actor: str, title: str
         sources=sorted(sources), contested=contested, contradictions=sorted(contradictions), extra=extra,
     )
     result["updated"] = old is not None
-    result["draft"] = extra.get("status") == "draft"
     conn.commit()
     return result
 
@@ -698,35 +692,6 @@ def _normalize_links(conn, paths: set[str], actor: str) -> None:
             extra=page["metadata"], note="摄入后规范化互链")
         conn.commit()
 
-
-def _publish_ready_topics(conn, paths: set[str], actor: str) -> set[str]:
-    """Publish new factual pages only when their entire outgoing graph is available."""
-    pages = store.all_pages()
-    graph, _ = store.link_graph(pages)
-    ready = {rel for rel in paths if rel in pages and pages[rel].page_type not in ("query", "comparison")}
-    while True:
-        invalid = set()
-        for rel in ready:
-            targets = {link["path"] for link in graph[rel]} - {None, rel}
-            if len(targets) < 2 or any(link["path"] is None for link in graph[rel]):
-                invalid.add(rel)
-            elif any(pages[t].extra.get("status") == "draft" and t not in ready for t in targets):
-                invalid.add(rel)
-        if not invalid: break
-        ready -= invalid
-    for rel in ready:
-        p = store.get_page(conn, rel)
-        if p["metadata"].get("status") != "draft": continue
-        extra = dict(p["metadata"], status="published")
-        extra.pop("review_notes", None)
-        result = store.write_page_sync(conn, path=rel, title=p["title"], page_type=p["page_type"],
-            body_md=p["body_md"], actor=actor, base_commit=p["head"], tags=p["tags"], sources=p["sources"],
-            confidence=p["confidence"], contested=p["contested"], contradictions=p["contradictions"], extra=extra,
-            note="主题关系检查通过，发布知识页")
-        if not result.get("ok"):
-            raise DocumentIngestError("主题发布失败，候选已保留")
-        conn.commit()
-    return ready
 
 
 def _finish(conn: sqlite3.Connection, job_id: int, status: str, *, error: str = "") -> None:
@@ -834,7 +799,7 @@ def _run_job(job_id: int) -> None:
                         proposal.update(merged[0], target_path=proposal.get("target_path", ""))
                     result = _compile_topic(conn, proposal, raw_rel, actor, filename)
                     ids = [ident for ident, _ in group]
-                    state = ("draft" if result.get("draft") else "applied") if result.get("ok") else "needs_review"
+                    state = "applied" if result.get("ok") else "needs_review"
                     conn.executemany("UPDATE ingest_candidates SET status=?,result_path=?,note=? WHERE id=?",
                         [(state, result.get("path"), result.get("note", ""), ident) for ident in ids])
                     if result.get("ok") and result.get("path"):
@@ -848,17 +813,13 @@ def _run_job(job_id: int) -> None:
                             pages_skipped=skipped_total)
                     conn.commit()
                 _normalize_links(conn, touched, actor)
-                ready = _publish_ready_topics(conn, touched, actor)
-                conn.executemany("UPDATE ingest_candidates SET status='applied' WHERE job_id=? AND result_path=?", [(job_id, rel) for rel in ready])
                 conn.commit()
                 from ..wiki.maintenance import maintain
                 maintain(actor=actor)
                 from ..wiki.lint import lint
                 report = lint(conn, paths=touched)
                 unresolved = conn.execute("SELECT count(*) FROM ingest_candidates WHERE job_id=? AND status='needs_review'", (job_id,)).fetchone()[0]
-                drafts = conn.execute("SELECT count(*) FROM ingest_candidates WHERE job_id=? AND status='draft'", (job_id,)).fetchone()[0]
-                report["draft_candidates"] = drafts
-                issues = report["summary"]["error"] + report["summary"]["warn"] + drafts
+                issues = report["summary"]["error"] + report["summary"]["warn"]
                 quality = "partial" if failed_chunks or unresolved or dropped_total or not raw_rel else ("needs_review" if issues or not touched else "passed")
                 # Structural checks do not certify truth; semantic review remains explicit.
                 report["semantic_review"] = "required"
