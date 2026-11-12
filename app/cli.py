@@ -25,7 +25,7 @@ def _ensure_wiki(conn: sqlite3.Connection, actor: str) -> None:
     建目录、SCHEMA.md/index.md/log.md、旧布局幂等迁移，全在 store.ensure_vault 里
     （它内部先迁移再补特殊文件，最后用一次 commit 落盘）。cli 不再自己 shell out 到 git：
     那条路绕开了 repo 钉死的 GIT_DIR/GIT_WORK_TREE 与显式 utf-8。
-    SCHEMA.md 由 `wiki.toml` 生成（见 app/wiki_config.py）；本命令只负责把 vault 备好。
+    SCHEMA.md 属于 wiki 仓库（见 app/wiki_config.py 的应用配置说明）；本命令只负责把 vault 备好。
     幂等：vault 已是新布局时 ensure_vault 一个文件都不动、也不产生提交。
     """
     fresh = not (settings.wiki_dir / ".git").exists()
@@ -298,7 +298,7 @@ def _sync_report_text(report: dict) -> str:
 
 
 def show_plugins(args: argparse.Namespace) -> None:
-    """列出 wiki.toml 启用的插件。"""
+    """列出 app.toml 启用的插件。"""
     from .plugins import get_plugins
 
     plugins = get_plugins()
@@ -311,22 +311,20 @@ def show_plugins(args: argparse.Namespace) -> None:
         ))
         return
     if not plugins:
-        print("没有启用任何插件（wiki.toml 的 [plugins] enabled 为空）")
+        print("没有启用任何插件（app.toml 的 [plugins] enabled 为空）")
         return
     for plugin in plugins:
         print(f"{plugin.id}\t{plugin.name}\t路由 {len(plugin.routers())} 个\t工具 {len(plugin.tools())} 个")
 
 
 def show_config(args: argparse.Namespace) -> None:
-    """校验 wiki.toml 并打印解析后的配置（不改任何文件）。"""
+    """校验 app.toml 并打印解析后的配置（不改任何文件）。"""
     from .wiki_config import get_config
 
     config = get_config()
     payload = config.as_site_payload()
     payload.update(
         {
-            "domain": config.domain,
-            "tags": list(config.tags),
             "agent_persona": config.agent_persona,
             "agent_rules": config.agent_rules,
             "ingest_system_prompt": config.ingest_system_prompt,
@@ -337,12 +335,10 @@ def show_config(args: argparse.Namespace) -> None:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
         return
     if args.check:
-        print("wiki.toml 校验通过" + (f"：{config.source_path}" if config.source_path else "（使用内置默认值）"))
+        print("app.toml 校验通过" + (f"：{config.source_path}" if config.source_path else "（使用内置默认值）"))
         return
     print(f"站点名：{config.site_name}")
     print(f"描述：{config.description}")
-    print(f"领域：{config.domain}")
-    print(f"标签：{'、'.join(config.tags) if config.tags else '（空）'}")
     print(f"页面类型：{'、'.join(f'{k}={v}' for k, v in config.type_labels.items())}")
     print(f"配置来源：{config.source_path or '内置默认值'}")
 
@@ -369,7 +365,7 @@ def main() -> None:
     p_plugins.add_argument("--json", action="store_true", help="输出 JSON")
     p_plugins.set_defaults(func=show_plugins)
 
-    p_config = sub.add_parser("config", help="校验并列印 wiki.toml 解析结果")
+    p_config = sub.add_parser("config", help="校验并列印 app.toml 解析结果")
     p_config.add_argument("--check", action="store_true", help="只校验，不打印完整配置")
     p_config.add_argument("--json", action="store_true", help="输出 JSON（脚本用）")
     p_config.set_defaults(func=show_config)

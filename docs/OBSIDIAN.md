@@ -26,7 +26,7 @@ WIKI_DIR/
 
 ```dotenv
 WIKI_DIR=$HOME/Documents/Knowledge/my-wiki
-WIKI_CONFIG=./wiki.toml
+WIKI_CONFIG=./app.toml
 ```
 
 应用启动时会在该目录幂等执行 `git init`（如果还不是仓库），只在缺失时补 `SCHEMA.md`/`index.md`/`log.md`，之后每次写页都在这个仓库提交。Obsidian 里看到的改动与应用的提交是同一份历史。
@@ -75,7 +75,7 @@ python -m app.cli git-status  # 只读：ahead/behind/dirty
 
 ## 与项目仓库的边界
 
-- 项目仓库：`app/`、`web/`、`wiki.toml`、`deploy/`、`docs/`、`plugins/`。
+- 项目仓库：`app/`、`web/`、`app.toml`、`deploy/`、`docs/`、`plugins/`。
 - wiki 仓库：页面、`SCHEMA.md`、`index.md`、`log.md`、`raw/`。
 - 不要把 wiki 页面提交进项目仓库；不要把项目代码提交进 wiki 仓库。
 - 备份、remote、升级分别处理：项目仓库 `git pull`，wiki 仓库用应用备份/`git` 历史。

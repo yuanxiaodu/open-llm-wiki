@@ -23,7 +23,7 @@ local Obsidian clone (separate git, sync scripts)
 PM_wiki fork 相对上游只新增以下内容（不改 `app/`、`web/src/`、`tests/` 等 core 文件）：
 
 ```
-wiki.pmwiki.toml          # 站点/领域/标签/欢迎语；[plugins] enabled = ["book"]
+app.pmwiki.toml           # 站点/UI/agent/欢迎语；[plugins] enabled = ["book"]
 plugins/book/             # 书稿阅读器插件（私有二次开发）
 deploy/pmwiki/            # 真实部署的 systemd/nginx/备份模板
 scripts/pmwiki/           # 同步与测试脚本
@@ -46,15 +46,15 @@ tests/test_book_plugin.py # 书稿插件测试
 ## 配置
 
 ```toml
-# wiki.pmwiki.toml（项目仓库）
+# app.pmwiki.toml（项目仓库）
 [site]
 name = "示例知识库"
 
-[wiki]
-domain = "示例领域：记录项目资料与研究笔记。"
-
-[wiki.taxonomy]
-tags = ["研究", "方法", "案例", "工具"]
+[ui.type_labels]
+entity = "实体"
+concept = "概念"
+comparison = "对比"
+query = "查询"
 
 [plugins]
 enabled = ["book"]
@@ -65,7 +65,7 @@ data_dir = "./book"
 
 ```dotenv
 # .env（不提交）
-WIKI_CONFIG=wiki.pmwiki.toml
+WIKI_CONFIG=app.pmwiki.toml
 WIKI_DIR=./data/wiki
 WIKI_LOCAL_VAULT=$HOME/Documents/Knowledge/my-wiki
 WIKI_OBSIDIAN_VAULT=$HOME/Documents/Knowledge

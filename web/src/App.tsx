@@ -93,7 +93,7 @@ function renderPluginRoutes(routes: PluginRoute[]): ReactNode[] {
 }
 
 export function App() {
-  // 站点配置（wiki.toml + SITE_NAME）整页加载时拉一次：store 会通知所有读者重渲染
+  // 站点配置（app.toml + SITE_NAME）整页加载时拉一次：store 会通知所有读者重渲染
   // （useSiteConfig/useSiteName），登录页 / 侧栏 / wiki 页 / 对话空态共用这一份。
   // 失败由 site.ts 静默吞掉——登录和对话绝不能因为展示信息没拉到而挂住或跳走。
   useEffect(() => {

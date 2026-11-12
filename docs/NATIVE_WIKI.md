@@ -21,7 +21,7 @@ _archive/               # 原生归档目录，可选
 
 - 页面 `type` 只有 `entity/concept/comparison/query`。
 - 页面 frontmatter 只有原生键：`title/created/updated/type/tags/sources/confidence/contested/contradictions`。
-- `SCHEMA.md` 是 wiki 自己的文件，跟页面一起跟踪、同步；`wiki.toml` 不生成、不覆盖。
+- `SCHEMA.md` 是 wiki 自己的文件，跟页面一起跟踪、同步；`app.toml` 不生成、不覆盖。
 - `index.md` 是目录，跟页面一起跟踪、同步；服务端写页只 upsert 本页条目，pull 后只补缺页/去 ghost。
 - `log.md` 是追加式历史，跟踪，合并用 `merge=union`。
 - `raw/` 使用四个原生子目录；不再有 `raw/uploads` / `raw/messages`。

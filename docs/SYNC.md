@@ -10,10 +10,10 @@ wiki 仓库就是一个普通 Git 仓库。没有 outbox 分支，也不在服�
 | `{entities,concepts,comparisons,queries}/*.md` | 是 | 标准三方合并 |
 | `log.md` / `log-*.md` | 是 | `.gitattributes` 的 `merge=union` |
 | `index.md` | 是 | 标准三方合并；服务端写页只 upsert 自己的条目 |
-| `SCHEMA.md` | 是 | 标准三方合并；默认来自 llm-wiki 模板，wiki.toml 不覆盖 |
+| `SCHEMA.md` | 是 | 标准三方合并；默认来自 llm-wiki 模板，app.toml 不覆盖 |
 | `raw/` | 按部署策略 | 材料文件，普通 git / LFS |
 
-`SCHEMA.md` 是 wiki 自己的 schema，不是 `wiki.toml` 的生成物；首次启动从本地已有
+`SCHEMA.md` 是 wiki 自己的 schema，不是 `app.toml` 的生成物；首次启动从本地已有
 wiki 同步到服务器时，它和 `index.md` 都会原样带过去，不会被服务端覆盖。
 
 ## 服务端

@@ -85,7 +85,7 @@ class Settings:
         return self.wiki_dir_override or (self.data_dir / "wiki")
 
 
-# SITE_NAME 的默认值来自 wiki.toml（见 app/wiki_config.py）；前端
+# SITE_NAME 的默认值来自 app.toml（见 app/wiki_config.py）；前端
 # web/src/site.ts 的 DEFAULT_SITE_NAME 与它同值。两边由 tests/test_site.py
 # 与 web/src/site.test.ts 各自的钉子钉住。
 
@@ -97,7 +97,7 @@ def _site_name(raw: str, default: str = DEFAULT_SITE_NAME) -> str:
 
     站名是纯展示字，.env 里写成 `SITE_NAME=` 或顺手多打几个空格时，页面标题不该
     变成一个空串（浏览器标签页会显示成地址），silently 回到默认值就是人想要的结果。
-    默认值来自 wiki.toml 的 site.name；本函数的 default 参数让「配置里的站名」
+    默认值来自 app.toml 的 site.name；本函数的 default 参数让「配置里的站名」
     也能享受同一条归一规则。
     """
     return (raw or "").strip() or default or DEFAULT_SITE_NAME

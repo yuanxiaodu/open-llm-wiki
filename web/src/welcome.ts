@@ -1,6 +1,6 @@
 // Welcome cards shown in the chat empty state.
 //
-// The defaults are domain-neutral; a deployment can override them in wiki.toml
+// The defaults are domain-neutral; a deployment can override them in app.toml
 // under [ui].build_actions / [ui].readonly_actions. The backend serves the
 // resolved values through GET /api/site.
 //

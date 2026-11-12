@@ -66,7 +66,7 @@ LOG_FILE = "log.md"
 LOG_HEADER = "# 行动日志\n\n"
 
 # 2026-11-13（修正）：SCHEMA.md / index.md 是 wiki 自己的文件，跟页面一起跟踪、
-# 一起同步。SCHEMA 由维护者/智能体维护，不再由 wiki.toml 生成；index 是目录，
+# 一起同步。SCHEMA 由维护者/智能体维护，不再由 app.toml 生成；index 是目录，
 # 服务端写页时只 upsert 对应条目，不整体重写别人的排版。
 GITIGNORE_LINES = (".DS_Store",)
 GITATTRIBUTES_LINES = (
@@ -582,7 +582,7 @@ _SPECIAL_ALIASES = {
 def _schema_text() -> str:
     """新 wiki 的 SCHEMA 默认骨架。
 
-    这是 llm-wiki 风格的默认 schema，不是 `wiki.toml` 的生成物。文件已存在时
+    这是 llm-wiki 风格的默认 schema，不是 `app.toml` 的生成物。文件已存在时
     `ensure_vault` 绝不覆盖：SCHEMA 属于 wiki，由维护者/智能体编辑并随 Git 同步。
     """
     try:

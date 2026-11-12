@@ -84,7 +84,7 @@ sudo systemctl restart openllmwiki
 .venv/bin/python -m app.cli backup --keep 14
 ```
 
-wiki 仓库（`WIKI_DIR`）是独立 Git 仓库；项目升级不会改它。SCHEMA 由 `wiki.toml` 在启动时重新生成。
+wiki 仓库（`WIKI_DIR`）是独立 Git 仓库；项目升级不会改它。`SCHEMA.md` 属于 wiki 仓库，项目升级不会重新生成它；缺失时只补默认骨架。
 
 ## 备份
 

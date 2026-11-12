@@ -12,7 +12,7 @@ plugins/
       my-plugin.css      # optional, imported by index.tsx
 ```
 
-The backend is discovered at runtime from `wiki.toml`:
+The backend is discovered at runtime from `app.toml`:
 
 ```toml
 [plugins]

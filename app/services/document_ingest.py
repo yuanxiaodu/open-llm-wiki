@@ -179,7 +179,7 @@ def _raw_path_for(upload_id: int, filename: str) -> str | None:
 
 
 def _system_prompt() -> str:
-    """长文摄入的系统提示词：默认来自 wiki.toml，可在 [ingest] 覆盖。"""
+    """长文摄入的系统提示词：默认来自 app.toml，可在 [ingest] 覆盖。"""
     return get_config().ingest_system_prompt
 
 

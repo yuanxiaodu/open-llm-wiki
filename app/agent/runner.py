@@ -416,7 +416,7 @@ def _permission_state(can_build_wiki: bool) -> str:
 
 
 def _base_instructions() -> str:
-    """技能正文 + wiki.toml 里可选的 agent persona / extra rules。"""
+    """技能正文 + app.toml 里可选的 agent persona / rules。"""
     config = get_config()
     parts: list[str] = []
     if config.agent_persona.strip():

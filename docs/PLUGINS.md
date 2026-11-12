@@ -21,7 +21,7 @@ plugins/
 
 ## 启用
 
-`wiki.toml`：
+`app.toml`：
 
 ```toml
 [plugins]

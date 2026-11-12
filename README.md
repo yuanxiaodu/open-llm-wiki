@@ -16,7 +16,7 @@ An open-source, self-hosted knowledge base maintained by an AI agent. Chat with 
 - **多来源摄入**：PDF、Word、PPT、Excel、图片、网页、粘贴文字；长文档走后台分块编译（`ingest_document`）。
 - **多用户**：登录、邀请注册、管理员、只读/建设权限、对话可见范围。
 - **SSE 流式对话**：工具事件、断线续读、消息落库。
-- **可配置 wiki**：`wiki.toml` 定义站名、领域、标签体系、页面类型中文名、智能体人设、长文摄入提示词、欢迎语。
+- **可配置应用**：`app.toml` 定义站名、描述、页面类型中文名、智能体人设、长文摄入提示词、欢迎语和插件；wiki schema 不在这里。
 - **插件系统**：后端插件包 + 构建期前端入口；默认不启用任何功能插件。
 - **独立 wiki 仓库**：项目代码与知识库数据是两个 Git 仓库；`WIKI_DIR` 可指向任意独立 vault，包括本地 Obsidian vault。
 
@@ -25,15 +25,15 @@ An open-source, self-hosted knowledge base maintained by an AI agent. Chat with 
 ```
 project repo (this repo)                 wiki repo (WIKI_DIR)
   app/ web/ tests/ scripts/                SCHEMA.md index.md log.md
-  deploy/ docs/ wiki.toml                  entities/ concepts/ raw/ ...
+  deploy/ docs/ app.toml                   entities/ concepts/ raw/ ...
         │                                       ▲
         └──────────── 应用运行时读写 ────────────┘
 ```
 
-- **项目仓库**只放代码、配置、部署、文档、`wiki.toml`。
+- **项目仓库**只放代码、配置、部署、文档、`app.toml`。
 - **wiki 仓库**只放页面、`SCHEMA.md`、`index.md`、`log.md`、`raw/`；它有独立提交历史、remote 和备份。
 - `WIKI_CONFIG` 指向项目侧配置；`WIKI_DIR` 指向 wiki 仓库（默认 `DATA_DIR/wiki`）。
-- `SCHEMA.md` 是 wiki 自己的 schema，跟页面一起跟踪、同步；`wiki.toml` 不覆盖它。
+- `SCHEMA.md` 是 wiki 自己的 schema，跟页面一起跟踪、同步；`app.toml` 不生成、不覆盖它。
 
 如果希望应用直接读写本地 Obsidian vault，把 `WIKI_DIR` 指过去即可；如果像多机部署那样保留一份本地 clone，再用同步脚本发布，见 [docs/OBSIDIAN.md](docs/OBSIDIAN.md)。
 
@@ -51,7 +51,7 @@ pip install -r requirements-dev.txt
 
 cp .env.example .env
 # 必填：SESSION_SECRET、ADMIN_PHONE、ADMIN_PASSWORD、LLM_API_KEY
-# 可选：SITE_NAME / WIKI_DIR / WIKI_CONFIG
+# 可选：WIKI_DIR / WIKI_CONFIG（正常不需要 SITE_NAME）
 
 python -m app.cli seed
 uvicorn app.main:app --reload
@@ -71,24 +71,21 @@ pnpm dev
 
 ## 配置 wiki
 
-编辑项目根 `wiki.toml`，重启应用即可：
+编辑项目根 `app.toml`，重启应用即可：
 
 ```toml
 [site]
 name = "知识库"
+description = "一个由 AI 维护、可自托管的个人知识库"
 
-[wiki]
-domain = "这个知识库记录什么、事实依据怎么标。"
-
-[wiki.taxonomy]
-tags = ["概念", "方法", "案例", "工具"]
-
-[wiki.type_labels]
+[ui.type_labels]
 entity = "实体"
 concept = "概念"
+comparison = "对比"
+query = "查询"
 ```
 
-完整字段见 [docs/CONFIGURATION.md](docs/CONFIGURATION.md)。配置变化只影响应用侧（站点名/UI/人设）；`SCHEMA.md` 由 wiki 维护者/agent 编辑。
+完整字段见 [docs/CONFIGURATION.md](docs/CONFIGURATION.md)。`app.toml` 只影响应用侧（站点名/UI/人设/插件）；`SCHEMA.md` 由 wiki 维护者/agent 编辑。
 
 ## 插件
 

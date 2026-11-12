@@ -1,6 +1,6 @@
 // Build-time frontend plugin registry.
 //
-// A plugin's backend half is discovered at runtime from wiki.toml. Its frontend
+// A plugin's backend half is discovered at runtime from app.toml. Its frontend
 // half must be known to the bundler, so we discover it with Vite's glob import:
 // any `plugins/<id>/web/index.tsx` default-exporting { id, routes } is registered
 // automatically. A fork only needs to add the plugin directory; it does not edit

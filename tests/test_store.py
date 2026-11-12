@@ -1276,7 +1276,7 @@ def test_ensure_vault_creates_layout_and_special_files_once(vault, tmp_wiki):
         assert (tmp_wiki / name).is_file(), name
     from app.wiki_config import get_config
 
-    # 2026-11-13 修正：SCHEMA 是 llm-wiki 默认骨架，不再由 wiki.toml 生成。
+    # 2026-11-13 修正：SCHEMA 是 llm-wiki 默认骨架，不再由 app.toml 生成。
     assert (tmp_wiki / "SCHEMA.md").read_text(encoding="utf-8").startswith("# Wiki Schema\n")
     assert "## Tag Taxonomy" in (tmp_wiki / "SCHEMA.md").read_text(encoding="utf-8")
     assert "Total pages: 0" in (tmp_wiki / "index.md").read_text(encoding="utf-8")

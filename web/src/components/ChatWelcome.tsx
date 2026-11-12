@@ -4,7 +4,7 @@
 // 只有使用权限的账号：换成三张只读动作（问 / 找 / 划重点）——不能摄入、不能改页，
 // 所以「整理一份资料」和「体检知识库」都不该出现。
 //
-// 卡片内容来自 wiki.toml（[ui].build_actions / readonly_actions），由 /api/site 下发；
+// 卡片内容来自 app.toml（[ui].build_actions / readonly_actions），由 /api/site 下发；
 // ChatWelcome 只负责渲染与分发点击，不在组件里写死文案。
 //
 // 两个入口共用：没选会话的首页、选了空会话时的空消息流。

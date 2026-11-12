@@ -1,22 +1,18 @@
-"""Wiki identity and editorial configuration, loaded from ``wiki.toml``.
+"""Application identity and UI configuration, loaded from ``app.toml``.
 
-The wiki engine itself is domain-neutral. Everything a particular knowledge base
-needs to say about itself lives in one TOML file at the repository root (or the
-path in ``WIKI_CONFIG``):
+This file is not a wiki schema. ``SCHEMA.md`` belongs to the wiki vault and is
+tracked/synced like pages; editing ``app.toml`` never writes or overwrites it.
 
-- the site name and one-line description;
-- the default domain/tag hints for new sites (``SCHEMA.md`` is wiki-owned, not generated);
-- legacy default tag hints (the live taxonomy is SCHEMA.md);
-- human-readable labels for the five fixed page types;
-- optional agent persona / extra rules;
+It holds non-secret, versioned settings:
+
+- site name and one-line description;
+- human-readable labels for the four fixed page types;
+- optional agent persona / rules;
 - the system prompt used by long-document ingestion;
-- the welcome cards shown in the chat empty state.
+- the welcome cards shown in the chat empty state;
+- plugin enablement and plugin options.
 
-``SCHEMA.md`` belongs to the wiki, not to this config. It is tracked and synced
-like pages; ``store.ensure_vault`` only writes a default skeleton when the file
-is missing. Editing ``wiki.toml`` never overwrites it.
-
-No secrets belong in this file. Credentials stay in ``.env``.
+Secrets and per-deployment runtime settings stay in ``.env``.
 """
 
 from __future__ import annotations
@@ -31,24 +27,10 @@ from typing import Any
 logger = logging.getLogger("openllmwiki.wiki_config")
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_CONFIG_PATH = PROJECT_ROOT / "wiki.toml"
+DEFAULT_CONFIG_PATH = PROJECT_ROOT / "app.toml"
 
 DEFAULT_SITE_NAME = "知识库"
 DEFAULT_DESCRIPTION = "一个由 AI 维护、可自托管的个人知识库"
-DEFAULT_DOMAIN = (
-    "示例知识库：记录项目资料、研究笔记与决策依据。"
-    "事实句要有出处，页面之间用 wikilink 连成网。"
-)
-DEFAULT_TAGS: tuple[str, ...] = (
-    "概念",
-    "方法",
-    "案例",
-    "工具",
-    "人物",
-    "组织",
-    "研究",
-    "其他",
-)
 DEFAULT_TYPE_LABELS: dict[str, str] = {
     "entity": "实体",
     "concept": "概念",
@@ -95,12 +77,11 @@ DEFAULT_READONLY_ACTIONS: tuple[WelcomeAction, ...] = (
 )
 
 
-def _default_ingest_prompt(site_name: str, domain: str) -> str:
+def _default_ingest_prompt(site_name: str) -> str:
     return (
         f"你是《{site_name}》知识库的编辑。"
         "你只从用户给的材料块里提炼事实页，不补充块外知识，不确定的内容不写。"
-        "输出必须是单个 JSON 对象，不要 Markdown、不要解释。\n"
-        f"知识库领域：{domain}"
+        "输出必须是单个 JSON 对象，不要 Markdown、不要解释。"
     )
 
 
@@ -108,12 +89,9 @@ def _default_ingest_prompt(site_name: str, domain: str) -> str:
 class WikiConfig:
     site_name: str
     description: str
-    domain: str
-    tags: tuple[str, ...]
     type_labels: dict[str, str]
     agent_persona: str
     agent_rules: str
-    extra_rules: str
     ingest_system_prompt: str
     welcome_build: tuple[WelcomeAction, ...]
     welcome_readonly: tuple[WelcomeAction, ...]
@@ -139,7 +117,7 @@ def _table(data: dict[str, Any], key: str) -> dict[str, Any]:
     if value is None:
         return {}
     if not isinstance(value, dict):
-        raise WikiConfigError(f"wiki.toml 的 [{key}] 必须是一张表")
+        raise WikiConfigError(f"app.toml 的 [{key}] 必须是一张表")
     return value
 
 
@@ -147,7 +125,7 @@ def _string(value: Any, field: str, default: str) -> str:
     if value is None:
         return default
     if not isinstance(value, str):
-        raise WikiConfigError(f"wiki.toml 的 {field} 必须是字符串")
+        raise WikiConfigError(f"app.toml 的 {field} 必须是字符串")
     return value.strip()
 
 
@@ -155,7 +133,7 @@ def _string_list(value: Any, field: str, default: tuple[str, ...]) -> tuple[str,
     if value is None:
         return default
     if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
-        raise WikiConfigError(f"wiki.toml 的 {field} 必须是字符串数组")
+        raise WikiConfigError(f"app.toml 的 {field} 必须是字符串数组")
     out: list[str] = []
     for item in value:
         clean = item.strip()
@@ -171,23 +149,23 @@ def _rules(value: Any, field: str) -> str:
         return value.strip()
     if isinstance(value, list) and all(isinstance(item, str) for item in value):
         return "\n".join(item.strip() for item in value if item.strip())
-    raise WikiConfigError(f"wiki.toml 的 {field} 必须是字符串或字符串数组")
+    raise WikiConfigError(f"app.toml 的 {field} 必须是字符串或字符串数组")
 
 
 def _actions(value: Any, field: str, default: tuple[WelcomeAction, ...]) -> tuple[WelcomeAction, ...]:
     if value is None:
         return default
     if not isinstance(value, list) or not value:
-        raise WikiConfigError(f"wiki.toml 的 {field} 必须是非空动作数组")
+        raise WikiConfigError(f"app.toml 的 {field} 必须是非空动作数组")
     out: list[WelcomeAction] = []
     for index, item in enumerate(value):
         where = f"{field}[{index}]"
         if not isinstance(item, dict):
-            raise WikiConfigError(f"wiki.toml 的 {where} 必须是一张表")
+            raise WikiConfigError(f"app.toml 的 {where} 必须是一张表")
         key = _string(item.get("key"), f"{where}.key", "")
         if key not in ACTION_KEYS:
             raise WikiConfigError(
-                f"wiki.toml 的 {where}.key 不认识：{key!r}；"
+                f"app.toml 的 {where}.key 不认识：{key!r}；"
                 f"只能取 {'、'.join(sorted(ACTION_KEYS))}"
             )
         out.append(
@@ -218,13 +196,10 @@ def _defaults(source: Path | None = None) -> WikiConfig:
     return WikiConfig(
         site_name=DEFAULT_SITE_NAME,
         description=DEFAULT_DESCRIPTION,
-        domain=DEFAULT_DOMAIN,
-        tags=DEFAULT_TAGS,
         type_labels=dict(DEFAULT_TYPE_LABELS),
         agent_persona=DEFAULT_AGENT_PERSONA,
         agent_rules=DEFAULT_AGENT_RULES,
-        extra_rules="",
-        ingest_system_prompt=_default_ingest_prompt(DEFAULT_SITE_NAME, DEFAULT_DOMAIN),
+        ingest_system_prompt=_default_ingest_prompt(DEFAULT_SITE_NAME),
         welcome_build=DEFAULT_BUILD_ACTIONS,
         welcome_readonly=DEFAULT_READONLY_ACTIONS,
         enabled_plugins=(),
@@ -234,7 +209,7 @@ def _defaults(source: Path | None = None) -> WikiConfig:
 
 
 def load_wiki_config(path: Path | None = None) -> WikiConfig:
-    """Load and validate ``wiki.toml``; fall back to built-in defaults when absent."""
+    """Load and validate ``app.toml``; fall back to built-in defaults when absent."""
     resolved, explicit = _resolve_path(path)
     if not resolved.exists():
         if explicit:
@@ -247,12 +222,10 @@ def load_wiki_config(path: Path | None = None) -> WikiConfig:
         raise WikiConfigError(f"wiki 配置读不出来：{resolved}：{exc}") from exc
 
     site = _table(data, "site")
-    wiki = _table(data, "wiki")
-    taxonomy = _table(wiki, "taxonomy") if "taxonomy" in wiki else {}
-    type_labels_raw = _table(wiki, "type_labels") if "type_labels" in wiki else {}
     agent = _table(data, "agent")
     ingest = _table(data, "ingest")
     ui = _table(data, "ui")
+    type_labels_raw = _table(ui, "type_labels") if "type_labels" in ui else {}
     plugins = _table(data, "plugins")
 
     site_name = _string(site.get("name"), "site.name", DEFAULT_SITE_NAME) or DEFAULT_SITE_NAME
@@ -261,18 +234,13 @@ def load_wiki_config(path: Path | None = None) -> WikiConfig:
     if env_name:
         site_name = env_name
     description = _string(site.get("description"), "site.description", DEFAULT_DESCRIPTION)
-    domain = _string(wiki.get("domain"), "wiki.domain", DEFAULT_DOMAIN) or DEFAULT_DOMAIN
-    extra_rules = _string(wiki.get("extra_rules"), "wiki.extra_rules", "")
-
-    tags = _string_list(taxonomy.get("tags"), "wiki.taxonomy.tags", DEFAULT_TAGS)
-
     type_labels = dict(DEFAULT_TYPE_LABELS)
     for key, value in type_labels_raw.items():
         if key not in DEFAULT_TYPE_LABELS:
-            logger.warning("wiki.toml 的 wiki.type_labels 有未知页面类型：%s（已忽略）", key)
+            logger.warning("app.toml 的 ui.type_labels 有未知页面类型：%s（已忽略）", key)
             continue
         if not isinstance(value, str):
-            raise WikiConfigError(f"wiki.toml 的 wiki.type_labels.{key} 必须是字符串")
+            raise WikiConfigError(f"app.toml 的 ui.type_labels.{key} 必须是字符串")
         clean = value.strip()
         if clean:
             type_labels[key] = clean
@@ -282,8 +250,8 @@ def load_wiki_config(path: Path | None = None) -> WikiConfig:
     ingest_prompt = _string(
         ingest.get("system_prompt"),
         "ingest.system_prompt",
-        _default_ingest_prompt(site_name, domain),
-    ) or _default_ingest_prompt(site_name, domain)
+        _default_ingest_prompt(site_name),
+    ) or _default_ingest_prompt(site_name)
 
     build_actions = _actions(
         ui.get("build_actions"), "ui.build_actions", DEFAULT_BUILD_ACTIONS
@@ -298,21 +266,18 @@ def load_wiki_config(path: Path | None = None) -> WikiConfig:
         if key == "enabled":
             continue
         if not isinstance(key, str) or not isinstance(value, dict):
-            raise WikiConfigError(f"wiki.toml 的 plugins.{key} 必须是一张表")
+            raise WikiConfigError(f"app.toml 的 plugins.{key} 必须是一张表")
         plugin_options[key] = dict(value)
     for name in enabled_plugins:
         if not name.replace("_", "").isalnum() or not name.islower():
-            raise WikiConfigError(f"wiki.toml 的插件名不合法：{name!r}")
+            raise WikiConfigError(f"app.toml 的插件名不合法：{name!r}")
 
     return WikiConfig(
         site_name=site_name,
         description=description,
-        domain=domain,
-        tags=tags,
         type_labels=type_labels,
         agent_persona=persona,
         agent_rules=agent_rules,
-        extra_rules=extra_rules,
         ingest_system_prompt=ingest_prompt,
         welcome_build=build_actions,
         welcome_readonly=readonly_actions,

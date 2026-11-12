@@ -8,7 +8,7 @@
 - `tests/` — backend pytest and plugin contract tests.
 - `migrations/` — SQLite schema migrations.
 - `scripts/` — utilities; `deploy/` — optional deployment templates; `docs/` — architecture/config/plugin/deployment docs.
-- `wiki.toml` — project-side wiki configuration (domain, tags, labels, plugin enablement).
+- `app.toml` — project-side application configuration (site identity, UI labels, persona, plugin enablement). It does not define wiki schema; `SCHEMA.md` lives in the wiki repo.
 - `data/` — ignored runtime data. `WIKI_DIR` (default `data/wiki`) is a **separate Git repository**; the project repo never tracks it.
 
 ## Commands

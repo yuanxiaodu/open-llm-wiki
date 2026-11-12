@@ -1,31 +1,20 @@
-# Open LLM Wiki — the wiki's identity and editorial policy.
+# Open LLM Wiki — project-side application configuration.
 #
 # This file is tracked by the *project* repository. It is not the wiki vault:
-# the vault is a separate Git repository at WIKI_DIR (default DATA_DIR/wiki),
-# created by `python -m app.cli seed`.
+# the vault is a separate Git repository at WIKI_DIR (default DATA_DIR/wiki).
 #
-# Edit this file and restart to change the site name, domain statement, tag
-# taxonomy, page-type labels, agent persona, long-document ingest prompt or the
-# chat welcome cards. SCHEMA.md in the wiki vault is generated from this file;
-# do not edit it by hand.
+# It holds non-secret, versioned application settings: site identity, UI labels
+# and welcome cards, agent persona/rules, long-document ingest prompt, and plugin
+# enablement. Secrets and per-deployment runtime settings belong in .env.
 #
-# No secrets belong here. Credentials live in .env.
+# SCHEMA.md / index.md / log.md belong to the wiki vault. This file never
+# generates or overwrites them.
 
 [site]
 name = "知识库"
 description = "一个由 AI 维护、可自托管的个人知识库"
 
-[wiki]
-domain = "示例知识库：记录项目资料、研究笔记与决策依据。事实句要有出处，页面之间用 wikilink 连成网。"
-extra_rules = """
-- 每条事实尽量给出 sources。
-- 不确定的内容标成待审。
-"""
-
-[wiki.taxonomy]
-tags = ["概念", "方法", "案例", "工具", "人物", "组织", "研究", "其他"]
-
-[wiki.type_labels]
+[ui.type_labels]
 entity = "实体"
 concept = "概念"
 comparison = "对比"
@@ -38,7 +27,7 @@ rules = """
 """
 
 # [ingest]
-# system_prompt 可选；不写就用内置模板（引用 site.name 与 wiki.domain）。
+# system_prompt 可选；不写就用内置模板（引用 site.name）。
 
 [[ui.build_actions]]
 key = "ask"

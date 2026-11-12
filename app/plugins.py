@@ -4,12 +4,12 @@ A plugin is a Python package under the repository's ``plugins/`` directory. It
 exposes a module-level ``plugin`` object with:
 
 - ``id`` / ``name`` / ``nav`` — identity and the sidebar entry shown in the SPA;
-- ``configure(options)`` — receive the ``[plugins.<id>]`` table from ``wiki.toml``;
+- ``configure(options)`` — receive the ``[plugins.<id>]`` table from ``app.toml``;
 - ``routers()`` — FastAPI routers to mount under ``/api``;
 - ``tools()`` — optional agent tools (must also be declared in the skill file);
 - ``startup(conn)`` / ``shutdown()`` — optional lifecycle hooks.
 
-Plugins are enabled in ``wiki.toml``::
+Plugins are enabled in ``app.toml``::
 
     [plugins]
     enabled = ["example"]

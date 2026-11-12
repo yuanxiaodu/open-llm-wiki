@@ -92,11 +92,11 @@ def test_plugin_lifecycle_and_site_payload(monkeypatch):
 
 
 def test_get_plugins_honours_enabled_config(monkeypatch, tmp_path):
-    (tmp_path / "wiki.toml").write_text(
+    (tmp_path / "app.toml").write_text(
         '[plugins]\nenabled = ["demo"]\n\n[plugins.demo]\ndata_dir = "./demo"\n',
         encoding="utf-8",
     )
-    config = load_wiki_config(tmp_path / "wiki.toml")
+    config = load_wiki_config(tmp_path / "app.toml")
     assert config.enabled_plugins == ("demo",)
     assert config.plugin_options == {"demo": {"data_dir": "./demo"}}
 
