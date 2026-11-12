@@ -6,8 +6,8 @@ wiki 仓库就是普通 Markdown + Git，可以直接用 Obsidian 打开。它�
 
 ```
 WIKI_DIR/
-  SCHEMA.md        # 由 wiki.toml 生成；生成物，不进 Git
-  index.md         # 从页面重建；生成物，不进 Git
+  SCHEMA.md        # wiki 自己的 schema；跟踪、同步
+  index.md         # 目录；跟踪、同步
   log.md           # 追加式行动日志；跟踪，merge=union
   raw/
   entities/
@@ -26,7 +26,7 @@ WIKI_DIR=$HOME/Documents/Knowledge/my-wiki
 WIKI_CONFIG=./wiki.toml
 ```
 
-应用启动时会在该目录幂等执行 `git init`（如果还不是仓库）、生成 `SCHEMA.md`/`index.md`/`log.md`，之后每次写页都在这个仓库提交。Obsidian 里看到的改动与应用的提交是同一份历史。
+应用启动时会在该目录幂等执行 `git init`（如果还不是仓库），只在缺失时补 `SCHEMA.md`/`index.md`/`log.md`，之后每次写页都在这个仓库提交。Obsidian 里看到的改动与应用的提交是同一份历史。
 
 注意：`WIKI_DIR` 指向的仓库不会被项目仓库跟踪；升级项目代码（`git pull` / `git merge`）不会动它。
 
@@ -41,7 +41,8 @@ WIKI_CONFIG=./wiki.toml
   commit → `pull --rebase` → push → 重建本地 `index.md`。冲突时脚本 abort rebase、退出码 2。
 
 两端都是标准 git，不再有 outbox 分支或 `app.cli sync` 逐页重放。`SCHEMA.md` / `index.md`
-是生成物，不跟踪；`log.md` 用 `.gitattributes` 的 `merge=union` 追加合并。
+是 wiki 自己的文件，跟页面一起跟踪、同步；`log.md` 用 `.gitattributes` 的
+`merge=union` 追加合并。
 
 服务端也可以手动跑：
 
@@ -57,8 +58,6 @@ python -m app.cli git-status  # 只读：ahead/behind/dirty
 
 ```gitignore
 .DS_Store
-index.md
-SCHEMA.md
 *.pdf
 *.docx
 *.pptx
@@ -66,7 +65,7 @@ SCHEMA.md
 *.png
 ```
 
-`log.md` 要跟踪（它是共享历史）；`index.md` / `SCHEMA.md` 由应用重建，不跟踪。
+`SCHEMA.md` / `index.md` / `log.md` 都跟踪：它们是 wiki 的一部分，不是服务端生成物。
 `raw/` 里的 Markdown 来源默认也跟踪，跟着页面一起同步；大文件按需换 LFS 或单独 rsync。
 同步脚本会自动补齐 `.gitignore` / `.gitattributes`，并把旧 vault 里误跟踪的
 `index.md` / `SCHEMA.md` 从索引移除（文件留在磁盘）。

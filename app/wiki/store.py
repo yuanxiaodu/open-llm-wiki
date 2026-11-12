@@ -11,7 +11,7 @@ S5 起 wiki 是 Hermes 标准的物理 vault（`data/wiki/`，Obsidian 可直接
    否则一个字都不落盘；
 3. 2026-10-30 起不再有句子级引注；页面契约只有 frontmatter + 正文 + wikilink + sources。
    它后面（裁定 R43）：磁盘上不存在"还没通过校验的正文"这样一个中间态；
-4. 全对上了才落盘：页面 + 自动重写的 `index.md` + 追加的 `log.md`，三份**一次 commit**
+4. 全对上了才落盘：页面 + upsert 的 `index.md` + 追加的 `log.md`，三份**一次 commit**
    （计划 §2）；没有改动时 git 自己说没有（裁定 R16），记为 no-op —— 页面字节未变时
    不重写 index/log、不提交，但 FTS 照样按 head 重写一遍（裁定 R46）；
 5. commit 段炸了（GitError / 子进程超时 / OSError）→ 三份文件都恢复成写之前的样子 +
@@ -65,19 +65,16 @@ INDEX_FILE = "index.md"
 LOG_FILE = "log.md"
 LOG_HEADER = "# 行动日志\n\n"
 
-# 2026-11-13：index/SCHEMA 是生成物，留在磁盘给 UI/模型读，但不进 git。
-# 两个 writer 每次 pull 都在生成物上做文本合并，必然漂移；git 只该管页面和 log。
-GENERATED_FILES = (SCHEMA_FILE, INDEX_FILE)
-GENERATED_COMMIT_SUBJECT = "wiki|edit|_vault_|system|index/SCHEMA 改为生成物"
-GITIGNORE_LINES = (
-    ".DS_Store",
-    "index.md",
-    "SCHEMA.md",
-)
+# 2026-11-13（修正）：SCHEMA.md / index.md 是 wiki 自己的文件，跟页面一起跟踪、
+# 一起同步。SCHEMA 由维护者/智能体维护，不再由 wiki.toml 生成；index 是目录，
+# 服务端写页时只 upsert 对应条目，不整体重写别人的排版。
+GITIGNORE_LINES = (".DS_Store",)
 GITATTRIBUTES_LINES = (
     "log.md merge=union",
     "log-*.md merge=union",
 )
+TRACK_SPECIAL_SUBJECT = "wiki|edit|_vault_|system|跟踪 SCHEMA/index"
+SCHEMA_TEMPLATE_PATH = Path(__file__).with_name("schema-default.md")
 
 # 裁定 R47：提交主题里的 action 字段只认这几个值（S9 加 delete：删页也是一次提交）。
 ACTIONS = ("create", "edit", "revert", "delete")
@@ -581,8 +578,15 @@ _SPECIAL_ALIASES = {
 }
 
 def _schema_text() -> str:
-    """SCHEMA.md 由 wiki.toml 生成（domain / conventions / tags）。"""
-    return get_config().render_schema()
+    """新 wiki 的 SCHEMA 默认骨架。
+
+    这是 llm-wiki 风格的默认 schema，不是 `wiki.toml` 的生成物。文件已存在时
+    `ensure_vault` 绝不覆盖：SCHEMA 属于 wiki，由维护者/智能体编辑并随 Git 同步。
+    """
+    try:
+        return SCHEMA_TEMPLATE_PATH.read_text(encoding="utf-8")
+    except OSError:
+        return "# Wiki Schema\n\n## Domain\n\n（待补充）\n\n## tags\n\n- 概念\n"
 
 
 
@@ -624,6 +628,19 @@ def read_raw(rel: str) -> str | None:
         return None
 
 
+def _remove_lines(path: Path, lines: tuple[str, ...]) -> bool:
+    """从文件里删掉指定整行（用于把旧的 index.md/SCHEMA.md ignore 规则移除）。"""
+    current = _read_text(path)
+    if current is None:
+        return False
+    present = set(lines)
+    kept = [line for line in current.splitlines() if line.strip() not in present]
+    if len(kept) == len(current.splitlines()):
+        return False
+    path.write_text("\n".join(kept) + ("\n" if kept else ""), encoding="utf-8")
+    return True
+
+
 def _append_missing_lines(path: Path, lines: tuple[str, ...]) -> bool:
     """把缺失的行追加到文件末尾；文件原有的内容一行不动。返回是否写过。"""
     current = _read_text(path) or ""
@@ -637,8 +654,141 @@ def _append_missing_lines(path: Path, lines: tuple[str, ...]) -> bool:
     return True
 
 
+_INDEX_LINK_RE = re.compile(r"\[\[([^\]|]+)(?:\|[^\]]*)?\]\]")
+_INDEX_HEADER_RE = re.compile(r"^##\s+(.+?)(?:（(\d+)）)?\s*$")
+
+
+def _index_entry(page) -> str:
+    """一页在 index.md 里的一行（Obsidian 别名写法）。"""
+    entry = f"- [[{page.slug}|{page.title}]]"
+    summary = summary_of(page.body_md)
+    if summary:
+        entry += f" — {summary}"
+    if page.tags:
+        entry += f"（{'、'.join(page.tags)}）"
+    return entry
+
+
+def _line_has_slug(line: str, slug: str) -> bool:
+    return any(match.group(1).strip() == slug for match in _INDEX_LINK_RE.finditer(line))
+
+
+def _recount_index(lines: list[str]) -> list[str]:
+    """重算每个分节的条目数与总页数/最后更新，其他行原样保留。"""
+    config = get_config()
+    label_to_type = {label: page_type for page_type, label in config.type_labels.items()}
+    counts: dict[str, int] = {}
+    current: str | None = None
+    for line in lines:
+        match = _INDEX_HEADER_RE.match(line)
+        if match and line.startswith("## "):
+            current = label_to_type.get(match.group(1).strip())
+        elif line.startswith("## "):
+            current = None
+        elif current and line.startswith("- [["):
+            counts[current] = counts.get(current, 0) + 1
+
+    pages = all_pages()
+    total = sum(1 for page in pages.values() if page.extra.get("status") != "draft")
+    updated = max((page.updated for page in pages.values() if page.updated), default="")
+
+    out: list[str] = []
+    for line in lines:
+        match = _INDEX_HEADER_RE.match(line)
+        if match and line.startswith("## "):
+            label = match.group(1).strip()
+            page_type = label_to_type.get(label)
+            if page_type:
+                line = f"## {label}（{counts.get(page_type, 0)}）"
+        elif line.startswith("最后更新："):
+            line = f"最后更新：{updated or '—'}"
+        elif line.startswith("总页数："):
+            line = f"总页数：{total}"
+        out.append(line)
+    return out
+
+
+def _insert_index_entry(lines: list[str], page) -> list[str]:
+    """把一页插到对应 type 分节末尾；没有分节就补一个。"""
+    label = get_config().type_labels.get(page.page_type, page.page_type)
+    entry = _index_entry(page)
+    header_at = None
+    for i, line in enumerate(lines):
+        match = _INDEX_HEADER_RE.match(line)
+        if line.startswith("## ") and match and match.group(1).strip() == label:
+            header_at = i
+            break
+    if header_at is None:
+        lines += ["", f"## {label}（1）", entry]
+        return lines
+    insert_at = len(lines)
+    for j in range(header_at + 1, len(lines)):
+        if lines[j].startswith("## "):
+            insert_at = j
+            break
+    while insert_at > header_at + 1 and not lines[insert_at - 1].strip():
+        insert_at -= 1
+    lines.insert(insert_at, entry)
+    return lines
+
+
+def _index_repair(text: str) -> str:
+    """保留现有 index 的排版/手工条目，只补缺失页、去掉指向不存在页的条目。
+
+    这是服务端 pull 之后的“目录修复”，不是整体重建：首次从本地已有 wiki 同步过来时，
+    本地 index 的格式与摘要原样保留，只保证目录和最终页面集合对得上。
+    """
+    pages = all_pages()
+    # draft 不进已发布目录；index 里若有 draft 条目，服务端修复时移除。
+    stems = {
+        page.slug for page in pages.values()
+        if page.extra.get("status") != "draft"
+    }
+    lines = text.splitlines()
+    kept: list[str] = []
+    for line in lines:
+        if line.startswith("- [["):
+            targets = [m.group(1).strip() for m in _INDEX_LINK_RE.finditer(line)]
+            if targets and not any(target in stems for target in targets):
+                continue
+        kept.append(line)
+    present = {
+        match.group(1).strip()
+        for line in kept if line.startswith("- [[")
+        for match in _INDEX_LINK_RE.finditer(line)
+    }
+    for page_type in serialize.TYPES:
+        group = sorted(
+            (
+                (rel, page) for rel, page in pages.items()
+                if page.page_type == page_type and page.extra.get("status") != "draft"
+            ),
+            key=lambda item: item[1].slug,
+        )
+        for _rel, page in group:
+            if page.slug not in present:
+                kept = _insert_index_entry(kept, page)
+                present.add(page.slug)
+    return "\n".join(_recount_index(kept)).rstrip() + "\n"
+
+
+def _index_upsert(page, action: str) -> str:
+    """在现有 index 上增/删/改一页，保留别人的排版与手工条目。
+
+    服务端写页不再整体重建目录：两个 writer 都可能维护 index，整体重写会把本地
+    刚补的条目冲掉。这里只动目标 slug 那一行，再重算分节计数。
+    """
+    current = _read_text(_path(INDEX_FILE))
+    if not current:
+        return _index_text()
+    lines = [line for line in current.splitlines() if not _line_has_slug(line, page.slug)]
+    if action != "delete" and page.extra.get("status") != "draft":
+        lines = _insert_index_entry(lines, page)
+    return "\n".join(_recount_index(lines)).rstrip() + "\n"
+
+
 def _index_text() -> str:
-    """自动生成的 index.md：标题、最后更新时间、总页数，然后按 type 分节。"""
+    """首次建库/手动 reindex 时的完整 index.md。"""
     config = get_config()
     pages = all_pages()
     updated = max((page.updated for page in pages.values() if page.updated), default="")
@@ -659,30 +809,8 @@ def _index_text() -> str:
             continue
         lines += ["", f"## {labels.get(page_type, page_type)}（{len(group)}）"]
         for _rel, page in group:
-            # Obsidian 别名写法：文件名仍是 slug，看到的是标题（中文标题的 slug 是
-            # page-日期，直接摆出来对人不友好）。
-            entry = f"- [[{page.slug}|{page.title}]]"
-            summary = summary_of(page.body_md)
-            if summary:
-                entry += f" — {summary}"
-            if page.tags:
-                entry += f"（{'、'.join(page.tags)}）"
-            lines.append(entry)
+            lines.append(_index_entry(page))
     return "\n".join(lines) + "\n"
-
-
-def write_schema() -> str:
-    """把 SCHEMA.md 按当前 wiki.toml 重写到磁盘（生成物，不 commit）。
-
-    本地同步脚本用它刷新本地 SCHEMA：这个文件不跟踪 Git，但原装 Hermes 技能会读它
-    来判断 index/log 的维护约定，所以它必须跟服务端生成的一致。
-    """
-    _ensure_dirs()
-    text = _schema_text()
-    path = _path(SCHEMA_FILE)
-    if _read_text(path) != text:
-        path.write_text(text, encoding="utf-8")
-    return text
 
 
 @_serialized_write
@@ -730,11 +858,9 @@ def append_log(action: str, subject: str, path: str, actor: str) -> None:
 def ensure_vault(conn=None) -> dict:
     """幂等地把 vault 准备好：目录 + 旧布局迁移 + SCHEMA/index/log，缺什么补什么。
 
-    lifespan 与 cli seed 都调它。顺序是有讲究的：先迁移（旧平文件按 type 搬进目录），
-    再补特殊文件，最后用**一次 commit** 把这一轮的所有变化提交（计划 §7 Step 5）；
-    已经是新布局时一个文件都不动、也不产生提交。
-
-    返回 {"created":[...], "changed":[...], "migrated": {...}, "changed_any": bool}。
+    2026-11-13 修正：SCHEMA.md / index.md 是 wiki 自己的文件，**已存在就不覆盖**。
+    首次启动从本地仓库同步过来时，本地 SCHEMA/index 原样保留；只有服务端从空库
+    启动、文件不存在时才补默认骨架。两者都跟页面一起跟踪、一起同步。
     """
     from . import migrate as migrate_module  # 懒导入：migrate 反过来也要 store（避免环）
 
@@ -750,33 +876,39 @@ def ensure_vault(conn=None) -> dict:
         changed.append(LOG_FILE)
         created.append(LOG_FILE)
 
-    # SCHEMA.md / index.md 是生成物：每次启动按配置/页面重写，但**不进 commit**。
+    # SCHEMA 只在缺失时补默认骨架；已存在绝不覆盖（它可能来自本地已有 wiki）。
     schema_path = _path(SCHEMA_FILE)
-    schema_existed = schema_path.exists()
-    schema_text = _schema_text()
-    if _read_text(schema_path) != schema_text:
-        schema_path.write_text(schema_text, encoding="utf-8")
-        if not schema_existed:
-            created.append(SCHEMA_FILE)
+    if not schema_path.exists():
+        schema_path.write_text(_schema_text(), encoding="utf-8")
+        changed.append(SCHEMA_FILE)
+        created.append(SCHEMA_FILE)
 
+    # index 同理：本地已有目录就保留，只补缺失页/去 ghost；空库才完整生成。
     index_path = _path(INDEX_FILE)
-    index_existed = index_path.exists()
-    index_text = _index_text()
-    if _read_text(index_path) != index_text:
-        index_path.write_text(index_text, encoding="utf-8")
-        if not index_existed:
-            created.append(INDEX_FILE)
+    if not index_path.exists():
+        index_path.write_text(_index_text(), encoding="utf-8")
+        changed.append(INDEX_FILE)
+        created.append(INDEX_FILE)
+    else:
+        current_index = _read_text(index_path) or ""
+        repaired = _index_repair(current_index)
+        if repaired != current_index:
+            index_path.write_text(repaired, encoding="utf-8")
+            changed.append(INDEX_FILE)
 
-    # 仓库级 .gitignore/.gitattributes：生成物不进 git；log 追加用 union 合并。
-    for name, lines in (
-        (".gitignore", GITIGNORE_LINES),
-        (".gitattributes", GITATTRIBUTES_LINES),
-    ):
-        try:
-            if _append_missing_lines(_path(name), lines) and name not in changed:
-                changed.append(name)
-        except OSError as exc:
-            raise StoreError(f"{name} 写不下去：{exc}") from exc
+    # 仓库级 .gitignore/.gitattributes：不再忽略 SCHEMA/index；log 用 union 合并。
+    try:
+        if _remove_lines(_path(".gitignore"), (INDEX_FILE, SCHEMA_FILE)):
+            if ".gitignore" not in changed:
+                changed.append(".gitignore")
+        if _append_missing_lines(_path(".gitignore"), GITIGNORE_LINES):
+            if ".gitignore" not in changed:
+                changed.append(".gitignore")
+        if _append_missing_lines(_path(".gitattributes"), GITATTRIBUTES_LINES):
+            if ".gitattributes" not in changed:
+                changed.append(".gitattributes")
+    except OSError as exc:
+        raise StoreError(f"仓库元文件写不下去：{exc}") from exc
 
     if changed:
         subject = (
@@ -789,18 +921,18 @@ def ensure_vault(conn=None) -> dict:
         except (repo.GitError, subprocess.TimeoutExpired, OSError) as exc:
             raise StoreError(f"vault 没初始化成：{exc}") from exc
 
-    # 旧 vault 里 index/SCHEMA 曾被跟踪：这里做一次迁移，把它们从索引里移除，
-    # 文件留在磁盘。新 vault 没有 tracked 的生成物，untrack 是 no-op。
+    # 旧 vault（2026-11-13 早些时候）可能把 SCHEMA/index 从跟踪里移除了：这里
+    # 重新强制加入，文件内容一个字不改。新库/已跟踪的库是 no-op。
     try:
-        untracked = repo.untrack(GENERATED_FILES, GENERATED_COMMIT_SUBJECT)
+        tracked = repo.track((SCHEMA_FILE, INDEX_FILE), TRACK_SPECIAL_SUBJECT)
     except (repo.GitError, subprocess.TimeoutExpired, OSError) as exc:
-        raise StoreError(f"生成物从版本库移除失败：{exc}") from exc
+        raise StoreError(f"SCHEMA/index 重新跟踪失败：{exc}") from exc
     return {
         "created": created,
         "changed": changed,
         "migrated": migration,
-        "untracked": untracked,
-        "changed_any": bool(changed),
+        "tracked": tracked,
+        "changed_any": bool(changed or tracked),
     }
 
 
@@ -1313,7 +1445,7 @@ def _write(
                  (log_path, _snapshot(log_path))]
     try:
         path.write_text(text, encoding="utf-8")
-        index_path.write_text(_index_text(), encoding="utf-8")
+        index_path.write_text(_index_upsert(page, action), encoding="utf-8")
         current_log = _read_text(log_path) or LOG_HEADER
         if current_log and not current_log.endswith("\n"):
             current_log += "\n"
@@ -1328,10 +1460,10 @@ def _write(
         return _result(_failed(f"文件写不下去，这一页没写成：{exc}"), rel, slug)
 
     try:
-        sha = repo.commit([rel, LOG_FILE], subject)
+        sha = repo.commit([rel, INDEX_FILE, LOG_FILE], subject)
     except (repo.GitError, subprocess.TimeoutExpired, OSError) as exc:
         # 裁定 R45：撤下三份的暂存 + 工作区逐字退回写之前，不留残局。
-        repo.unstage([rel, LOG_FILE])
+        repo.unstage([rel, INDEX_FILE, LOG_FILE])
         _restore(path, snapshots[0][1])
         _restore(index_path, snapshots[1][1])
         _restore(log_path, snapshots[2][1])
@@ -1480,7 +1612,7 @@ def delete_page_sync(
     )
     try:
         page_path.unlink(missing_ok=True)
-        index_path.write_text(_index_text(), encoding="utf-8")
+        index_path.write_text(_index_upsert(page, "delete"), encoding="utf-8")
         current_log = _read_text(log_path) or LOG_HEADER
         if current_log and not current_log.endswith("\n"):
             current_log += "\n"
@@ -1495,10 +1627,10 @@ def delete_page_sync(
         return _result(_failed(f"文件删不下去，这一页没删成：{exc}"), rel, slug)
 
     try:
-        sha = repo.commit([rel, LOG_FILE], subject)
+        sha = repo.commit([rel, INDEX_FILE, LOG_FILE], subject)
     except (repo.GitError, subprocess.TimeoutExpired, OSError) as exc:
         # 与写路径同口径：撤下三份的暂存 + 工作区逐字退回删之前，不留残局。
-        repo.unstage([rel, LOG_FILE])
+        repo.unstage([rel, INDEX_FILE, LOG_FILE])
         _restore(page_path, snapshots[0][1])
         _restore(index_path, snapshots[1][1])
         _restore(log_path, snapshots[2][1])

@@ -5,16 +5,16 @@ needs to say about itself lives in one TOML file at the repository root (or the
 path in ``WIKI_CONFIG``):
 
 - the site name and one-line description;
-- the domain statement rendered into ``data/wiki/SCHEMA.md``;
-- the tag taxonomy used by the agent and by lint;
+- the default domain/tag hints for new sites (``SCHEMA.md`` is wiki-owned, not generated);
+- legacy default tag hints (the live taxonomy is SCHEMA.md);
 - human-readable labels for the five fixed page types;
 - optional agent persona / extra rules;
 - the system prompt used by long-document ingestion;
 - the welcome cards shown in the chat empty state.
 
-``SCHEMA.md`` is a *generated* file: it is re-rendered from this config on every
-startup (and committed when it changes). Users who want to customize the wiki
-edit ``wiki.toml``, not the generated schema.
+``SCHEMA.md`` belongs to the wiki, not to this config. It is tracked and synced
+like pages; ``store.ensure_vault`` only writes a default skeleton when the file
+is missing. Editing ``wiki.toml`` never overwrites it.
 
 No secrets belong in this file. Credentials stay in ``.env``.
 """
@@ -121,35 +121,6 @@ class WikiConfig:
     enabled_plugins: tuple[str, ...]
     plugin_options: dict[str, dict[str, Any]]
     source_path: Path | None
-
-    def render_schema(self) -> str:
-        """Render the ``SCHEMA.md`` that the agent and lint read."""
-        lines = [
-            f"# {self.site_name} Wiki Schema",
-            "",
-            "> 本文件由 wiki.toml 自动生成，请勿手改；改 wiki.toml 后重启应用即可。",
-            "",
-            "## domain",
-            "",
-            self.domain.strip(),
-            "",
-            "## conventions",
-            "",
-            "- 页面 path 形如 `{dir}/{slug}.md`；`type` 决定目录，创建后不可改"
-            "（entity/concept/comparison/query/summary）。",
-            "- 来源：材料/链接写在 frontmatter 的 `sources` 里；正文不强制逐句引注。",
-            "- 页面互链用 `[[slug]]` 或 `[[slug|显示文字]]`；每页至少 2 个出链。",
-            "- `index.md` / `SCHEMA.md` 是生成物（从页面/配置重建，不跟踪 Git）；"
-            "`log.md` 是追加式共享历史（跟踪，合并用 `merge=union`）。",
-            "- 矛盾显式记录：在 frontmatter 写 `contested: true` 与 "
-            "`contradictions: [other-slug]`。",
-        ]
-        if self.extra_rules.strip():
-            lines += ["", self.extra_rules.strip()]
-        if self.tags:
-            lines += ["", "## tags", ""]
-            lines += [f"- {tag}" for tag in self.tags]
-        return "\n".join(lines) + "\n"
 
     def as_site_payload(self) -> dict[str, Any]:
         """The public ``GET /api/site`` payload consumed by the web client."""

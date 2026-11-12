@@ -374,9 +374,7 @@ def test_seed_initializes_llm_wiki_vault(client):
     )
     assert listed.returncode == 0, listed.stderr
     tracked = set(listed.stdout.splitlines())
-    # 2026-11-13：index/SCHEMA 是生成物，只留在工作区；log 仍跟踪。
-    assert "log.md" in tracked, tracked
-    assert not ({"SCHEMA.md", "index.md"} & tracked), tracked
+    assert {"SCHEMA.md", "index.md", "log.md"} <= tracked, tracked
 
     assert fetch_one("SELECT COUNT(*) AS n FROM users")["n"] == 1
 

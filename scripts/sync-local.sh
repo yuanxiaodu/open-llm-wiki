@@ -16,7 +16,6 @@
 #   WIKI_LOCAL_VAULT  本地 vault（默认 ~/wiki）
 #   WIKI_REMOTE       remote 名（默认 origin）
 #   WIKI_BRANCH       分支（默认 main）
-#   WIKI_LOCAL_PYTHON 重建 index 用的 python（默认本仓 .venv/bin/python）
 
 set -euo pipefail
 
@@ -27,7 +26,6 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VAULT="${WIKI_LOCAL_VAULT:-$HOME/wiki}"
 REMOTE="${WIKI_REMOTE:-origin}"
 BRANCH="${WIKI_BRANCH:-main}"
-PY="${WIKI_LOCAL_PYTHON:-$REPO/.venv/bin/python}"
 MESSAGE=""
 STATUS=0
 DRY=0
@@ -55,17 +53,20 @@ if ! mkdir "$LOCKDIR" 2>/dev/null; then
 fi
 trap 'rmdir "$LOCKDIR" 2>/dev/null || true' EXIT
 
-for line in index.md SCHEMA.md; do
-  grep -qxF "$line" "$VAULT/.gitignore" 2>/dev/null || echo "$line" >> "$VAULT/.gitignore"
-done
+# SCHEMA/index 是 wiki 自己的文件：不忽略，旧 ignore 规则要移除。
+if [ -f "$VAULT/.gitignore" ]; then
+  grep -vxE 'index\.md|SCHEMA\.md' "$VAULT/.gitignore" > "$VAULT/.gitignore.tmp" || true
+  mv "$VAULT/.gitignore.tmp" "$VAULT/.gitignore"
+fi
+grep -qxF '.DS_Store' "$VAULT/.gitignore" 2>/dev/null || echo '.DS_Store' >> "$VAULT/.gitignore"
 for line in "log.md merge=union" "log-*.md merge=union"; do
   grep -qxF "$line" "$VAULT/.gitattributes" 2>/dev/null || echo "$line" >> "$VAULT/.gitattributes"
 done
 
-# 旧 vault 里生成物可能还被跟踪：从索引移除，文件留在磁盘。
+# 旧 vault 可能把 SCHEMA/index 从跟踪里移除过：重新强制加入，内容不改。
 for f in index.md SCHEMA.md; do
-  if git -C "$VAULT" ls-files --error-unmatch "$f" >/dev/null 2>&1; then
-    git -C "$VAULT" rm --cached -q -- "$f"
+  if [ -f "$VAULT/$f" ]; then
+    git -C "$VAULT" add -f -- "$f"
   fi
 done
 
@@ -112,10 +113,5 @@ if ! git -C "$VAULT" push "$REMOTE" "HEAD:refs/heads/$BRANCH"; then
   git -C "$VAULT" push "$REMOTE" "HEAD:refs/heads/$BRANCH" || exit 1
 fi
 
-if [ -x "$PY" ]; then
-  ( cd "$REPO" && WIKI_DIR="$VAULT" WIKI_CONFIG="${WIKI_CONFIG:-wiki.toml}" \
-      "$PY" -c 'from app.wiki import store; store.write_schema(); store.rebuild_index()' ) \
-    >/dev/null 2>&1 || echo "提示：本地 index 重建失败（不影响已推送的页面）" >&2
-fi
 
 echo "完成：$(git -C "$VAULT" rev-parse --short HEAD) → ${REMOTE}/${BRANCH}"

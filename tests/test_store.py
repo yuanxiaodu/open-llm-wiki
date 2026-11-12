@@ -86,8 +86,8 @@ def _raw_git(cwd, *args) -> str:
 def _index_and_worktree(cwd) -> tuple[str, str]:
     """(暂存区里有哪些路径, 工作区/索引整体脏不脏)。都该是空的。
 
-    2026-11-13 起 index.md/SCHEMA.md 是未跟踪的生成物，`git status` 会报 `??`；
-    对"写完/失败后残留"的判据要扣掉这两行，否则每个用例都假脏。
+    2026-11-13 修正后 SCHEMA/index 重新跟踪；这里保留对旧 `??` 行的兼容过滤，
+    不改变"写完后暂存区/工作区应当干净"的判据。
     """
     status = "".join(
         line for line in _raw_git(cwd, "status", "--porcelain").splitlines(keepends=True)
@@ -140,11 +140,9 @@ def test_write_ok_commits_page_index_log_and_records(conn, tmp_wiki, member):
     assert f"- path: {rel}" in log_text
     assert "- actor: 张三" in log_text
 
-    # 2026-11-13：index/SCHEMA 是生成物，只有页面 + log 进 commit。
+    # 2026-11-13 修正：SCHEMA/index 跟页面一起跟踪；写页提交页面 + index + log。
     changed = _raw_git(tmp_wiki, "show", "--name-only", "--format=", res["sha"]).split()
-    assert sorted(changed) == sorted([rel, "log.md"])
-    assert (tmp_wiki / "index.md").is_file()
-    assert "index.md" not in _raw_git(tmp_wiki, "ls-files")
+    assert sorted(changed) == sorted([rel, "index.md", "log.md"])
 
 
 def test_write_creates_vault_dirs_on_demand(conn, tmp_wiki):
@@ -779,7 +777,7 @@ def test_commit_crash_restores_page_index_log_and_leaves_index_clean(
         for path in ([paths] if isinstance(paths, str) else paths):
             _raw_git(tmp_wiki, "add", "--", path)
         assert sorted(_raw_git(tmp_wiki, "diff", "--cached", "--name-only").split()) == sorted(
-            [rel, "log.md"]
+            [rel, "index.md", "log.md"]
         )
         raise boom_exc
 
@@ -1275,17 +1273,15 @@ def test_ensure_vault_creates_layout_and_special_files_once(vault, tmp_wiki):
         assert (tmp_wiki / name).is_file(), name
     from app.wiki_config import get_config
 
-    assert f"# {get_config().site_name} Wiki Schema" in (tmp_wiki / "SCHEMA.md").read_text(encoding="utf-8")
+    # 2026-11-13 修正：SCHEMA 是 llm-wiki 默认骨架，不再由 wiki.toml 生成。
+    assert (tmp_wiki / "SCHEMA.md").read_text(encoding="utf-8").startswith("# Wiki Schema\n")
     assert "## tags" in (tmp_wiki / "SCHEMA.md").read_text(encoding="utf-8")
     assert "总页数：0" in (tmp_wiki / "index.md").read_text(encoding="utf-8")
     commits = _count_commits(tmp_wiki)
     assert commits == 1
     tracked = _raw_git(tmp_wiki, "ls-files").split()
-    # 2026-11-13：SCHEMA/index 是生成物，不进版本库；log 与两个 repo 元文件进。
-    assert sorted(tracked) == [".gitattributes", ".gitignore", "log.md"]
-    assert (tmp_wiki / "index.md").is_file()
-    assert (tmp_wiki / "SCHEMA.md").is_file()
-    assert "index.md" not in tracked and "SCHEMA.md" not in tracked
+    # 2026-11-13 修正：SCHEMA/index 跟页面一起跟踪，不再忽略。
+    assert sorted(tracked) == [".gitattributes", ".gitignore", "SCHEMA.md", "index.md", "log.md"]
 
     result = store.ensure_vault()
     assert result["changed"] == [] and result["changed_any"] is False
@@ -1809,3 +1805,47 @@ def test_refresh_raw_upload_replaces_body_keeps_frontmatter(conn, tmp_wiki, memb
         conn, upload_id, "资料.pdf", "旧正文：漏单降到 1 单\n\n【第 1 页图片】\n图中是漏斗", "reparse"
     )
     assert again["ok"] and again["noop"]
+
+
+# --- 2026-11-13 修正：SCHEMA/index 属于 wiki，首启不得覆盖本地已有文件 -------
+
+
+def test_ensure_vault_preserves_existing_schema_and_index(tmp_wiki):
+    """首次从本地已有 wiki 启动：SCHEMA/index 原样保留，并跟页面一起跟踪。"""
+    (tmp_wiki / "SCHEMA.md").write_text(
+        "# Custom Schema\n\n## tags\n\n- 自定义标签\n", encoding="utf-8")
+    (tmp_wiki / "index.md").write_text(
+        "# Custom Index\n\n> 本地手写目录\n", encoding="utf-8")
+
+    store.ensure_vault()
+
+    assert (tmp_wiki / "SCHEMA.md").read_text(encoding="utf-8") == (
+        "# Custom Schema\n\n## tags\n\n- 自定义标签\n")
+    assert (tmp_wiki / "index.md").read_text(encoding="utf-8").startswith("# Custom Index")
+    tracked = _raw_git(tmp_wiki, "ls-files").split()
+    assert "SCHEMA.md" in tracked and "index.md" in tracked
+
+
+def test_index_upsert_preserves_other_manual_lines(conn, tmp_wiki):
+    """服务端写一页只 upsert 自己那一行，不重写别人手写的目录行。"""
+    b = store.write_page_sync(
+        conn, path="concepts/b.md", title="B 页", page_type="concept",
+        body_md="B 正文", actor="张三", note="建 B",
+    )
+    assert b["ok"]
+    index_path = tmp_wiki / "index.md"
+    text = index_path.read_text(encoding="utf-8")
+    text = text.replace(
+        [line for line in text.splitlines() if line.startswith("- [[b|")][0],
+        "- [[b|B 页]] — 手工摘要，保留",
+    )
+    index_path.write_text(text, encoding="utf-8")
+
+    a = store.write_page_sync(
+        conn, path="concepts/a.md", title="A 页", page_type="concept",
+        body_md="A 正文", actor="张三", note="建 A",
+    )
+    assert a["ok"]
+    after = index_path.read_text(encoding="utf-8")
+    assert "- [[b|B 页]] — 手工摘要，保留" in after
+    assert "- [[a|A 页]]" in after

@@ -9,20 +9,20 @@ wiki 仓库就是一个普通 Git 仓库。没有 outbox 分支，也不在服�
 |---|---|---|
 | `{entities,concepts,comparisons,queries,summaries}/*.md` | 是 | 标准三方合并 |
 | `log.md` / `log-*.md` | 是 | `.gitattributes` 的 `merge=union` |
-| `index.md` | 否（生成物） | 每次 pull/写页后重建 |
-| `SCHEMA.md` | 否（生成物） | 由 `wiki.toml` 重建 |
+| `index.md` | 是 | 标准三方合并；服务端写页只 upsert 自己的条目 |
+| `SCHEMA.md` | 是 | 标准三方合并；默认来自 llm-wiki 模板，wiki.toml 不覆盖 |
 | `raw/` | 按部署策略 | 材料文件，普通 git / LFS |
 
-生成物不进 Git 是两个 writer 不互相打架的关键：目录和 schema 永远由页面/配置重建，
-不在文本层面合并。
+`SCHEMA.md` 是 wiki 自己的 schema，不是 `wiki.toml` 的生成物；首次启动从本地已有
+wiki 同步到服务器时，它和 `index.md` 都会原样带过去，不会被服务端覆盖。
 
 ## 服务端
 
 应用自动执行，不需要人操作：
 
-- **回合开始**：`git pull --rebase`，重建 `index.md`/`SCHEMA.md` 与全文检索；
-  冲突/脏工作区时这一轮不开始，直接告诉用户先处理 git。
-- **写页**：store 提交页面 + `log.md`（同一次 commit）。
+- **回合开始**：`git pull --rebase`，修复 `index.md`（补缺失页/去 ghost）、重建全文检索；
+  已有 `SCHEMA.md` 不动。冲突/脏工作区时这一轮不开始，直接告诉用户先处理 git。
+- **写页**：store 提交页面 + `index.md` + `log.md`（同一次 commit）；index 只 upsert 本页条目。
 - **回合结束**：`git push`；非快进自动 `pull --rebase` 重试一次，冲突就停。
 - **启动**：先 pull 再 `ensure_vault`；冲突拒绝启动，网络故障只告警。
 
@@ -47,10 +47,10 @@ scripts/sync-local.sh -m "本次改了什么"
 
 脚本做：
 
-1. `git add -A`，提交本地改动（`index.md`/`SCHEMA.md` 被忽略）；
+1. `git add -A`，提交本地改动（包括 `SCHEMA.md` / `index.md` / `log.md`）；
 2. `git pull --rebase`；冲突则 abort、列出冲突文件、退出码 2；
 3. `git push`；被拒绝则再 `pull --rebase` 一次并重试；
-4. 用本地 Python 重建 `index.md`（生成物，不提交）。
+4. 不重建/覆盖已有 `index.md` / `SCHEMA.md`；它们跟页面一起提交、同步。
 
 只查看状态：
 
@@ -71,5 +71,6 @@ scripts/sync-local.sh -m "<本批说明>"
 
 - 页面冲突：脚本/服务端都 abort，不自动选边；人/agent 解决后重跑。
 - `log.md`：`merge=union`，两端追加都保留；重复条目可再跑去重。
-- `index.md` / `SCHEMA.md`：不参与合并，pull 后重建。
+- `index.md`：标准合并；服务端 pull 后只补缺页/去 ghost，不整体重建。
+- `SCHEMA.md`：标准合并；冲突停下，人工/agent 解决。
 - 永不 force push；本地提交始终留在历史里。

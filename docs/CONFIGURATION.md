@@ -8,9 +8,9 @@
 |---|---|
 | `site.name` | 站名；`SITE_NAME` 环境变量优先 |
 | `site.description` | 一句话描述，`/api/site` 下发 |
-| `wiki.domain` | 领域说明，写入生成的 `SCHEMA.md` 并进入长文摄入提示词 |
-| `wiki.extra_rules` | 追加到 `SCHEMA.md` conventions 的编辑规则 |
-| `wiki.taxonomy.tags` | 标签白名单；lint 用它校验 |
+| `wiki.domain` | 领域说明，进入长文摄入提示词；新库的 `SCHEMA.md` 默认骨架也会给出占位 |
+| `wiki.extra_rules` | 旧配置保留；不再追加到 `SCHEMA.md`，以 SCHEMA 文件为准 |
+| `wiki.taxonomy.tags` | 旧配置保留的默认标签提示；lint 以 `SCHEMA.md` 的 `## tags` 为准 |
 | `wiki.type_labels` | entity/concept/comparison/query/summary 的中文名 |
 | `agent.persona` | 智能体人设，拼在技能正文前 |
 | `agent.rules` | 额外规则，拼在技能正文后 |
@@ -19,7 +19,7 @@
 | `plugins.enabled` | 启用的插件 id 列表，默认空 |
 | `[plugins.<id>]` | 传给插件 `configure()` 的表 |
 
-`SCHEMA.md` 由 `wiki.toml` 生成；改配置后重启应用，应用会在 wiki 仓库提交新的 SCHEMA。
+`SCHEMA.md` 属于 wiki，跟页面一起跟踪、同步；`wiki.toml` 不再生成或覆盖它。文件缺失时，应用只补一份默认骨架。
 
 ## 环境变量（.env）
 

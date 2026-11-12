@@ -234,20 +234,20 @@ def tracked(paths: str | list[str] | tuple[str, ...]) -> list[str]:
     return [line for line in out.splitlines() if line]
 
 
-def untrack(paths: str | list[str] | tuple[str, ...], subject: str) -> str | None:
-    """把生成物从版本库移除，但文件留在工作区（`git rm --cached` + 一次 commit）。
+def track(paths: str | list[str] | tuple[str, ...], subject: str) -> str | None:
+    """把工作区里存在的文件强制加入版本库并提交（可越过 .gitignore）。
 
-    2026-11-13：index.md / SCHEMA.md 改成生成物。它们仍在磁盘上给 UI/模型读，
-    但不再进 git；否则两个 writer 每次 pull 都要在生成物上做文本合并。
-    只提交这次移除本身，不碰工作区其它暂存改动。
+    2026-11-13：SCHEMA.md / index.md 是 wiki 自己的文件，必须跟页面一起同步；
+    旧 vault 的 .gitignore 可能还列着它们，所以 re-track 要 `-f`。
     """
-    present = set(tracked(paths))
-    files = [name for name in _paths(paths) if name in present]
+    files = [name for name in _paths(paths) if (settings.wiki_dir / name).exists()]
     if not files:
         return None
     with _INDEX_LOCK:
-        _git("rm", "--cached", "-q", "--", *files)
-        _git("commit", "-q", "-m", subject)
+        _git("add", "-f", "--", *files)
+        if not _has_staged_change(files):
+            return None
+        _git("commit", "-q", "-m", subject, "--", *files)
         return _git("rev-parse", "HEAD").strip()
 
 

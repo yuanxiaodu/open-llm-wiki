@@ -11,7 +11,7 @@ An open-source, self-hosted knowledge base maintained by an AI agent. Chat with 
 
 ## 特性
 
-- **智能体维护 wiki**：`read` / `search` / `write_page` / `edit_page` / `lint` 等工具，写页自动追加 `log.md` 并提交 Git；`index.md` / `SCHEMA.md` 是生成物，不进 Git。
+- **智能体维护 wiki**：`read` / `search` / `write_page` / `edit_page` / `lint` 等工具，写页自动维护 `index.md` / `log.md` 并提交 Git；`SCHEMA.md` 是 wiki 自己的 schema，跟页面一起跟踪、同步。
 - **标准 git 同步**：服务器每个回合开始 `pull`、结束 `push`；本地 vault 由一句话触发 `scripts/sync-local.sh`（commit → pull --rebase → push）。冲突停在人面前，不 force push。
 - **多来源摄入**：PDF、Word、PPT、Excel、图片、网页、粘贴文字；长文档走后台分块编译（`ingest_document`）。
 - **多用户**：登录、邀请注册、管理员、只读/建设权限、对话可见范围。
@@ -33,7 +33,7 @@ project repo (this repo)                 wiki repo (WIKI_DIR)
 - **项目仓库**只放代码、配置、部署、文档、`wiki.toml`。
 - **wiki 仓库**只放页面、`SCHEMA.md`、`index.md`、`log.md`、`raw/`；它有独立提交历史、remote 和备份。
 - `WIKI_CONFIG` 指向项目侧配置；`WIKI_DIR` 指向 wiki 仓库（默认 `DATA_DIR/wiki`）。
-- `SCHEMA.md` 由 `wiki.toml` 生成；不要手改。
+- `SCHEMA.md` 是 wiki 自己的 schema，跟页面一起跟踪、同步；`wiki.toml` 不覆盖它。
 
 如果希望应用直接读写本地 Obsidian vault，把 `WIKI_DIR` 指过去即可；如果像多机部署那样保留一份本地 clone，再用同步脚本发布，见 [docs/OBSIDIAN.md](docs/OBSIDIAN.md)。
 
@@ -88,7 +88,7 @@ entity = "实体"
 concept = "概念"
 ```
 
-完整字段见 [docs/CONFIGURATION.md](docs/CONFIGURATION.md)。配置变化会在下次启动时重写 wiki 仓库里的 `SCHEMA.md` 并提交。
+完整字段见 [docs/CONFIGURATION.md](docs/CONFIGURATION.md)。配置变化只影响应用侧（站点名/UI/人设）；`SCHEMA.md` 由 wiki 维护者/agent 编辑。
 
 ## 插件
 

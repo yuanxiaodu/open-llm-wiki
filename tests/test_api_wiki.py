@@ -321,7 +321,7 @@ def test_log_routes_are_admin_only(client, member_login):
 
 
 def test_write_path_maintains_index_and_log_in_the_same_commit(client, admin, tmp_wiki):
-    """2026-11-13：页面 + log 同一次 commit；index 是生成物，同一次刷新但不进 git。"""
+    """2026-11-13：页面 + index + log 同一次 commit；SCHEMA/index 跟页面一起跟踪。"""
     created = _create(client, title="Maintained Page").json()
     assert len(client.get("/api/log").json()) == 1
 
