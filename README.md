@@ -125,6 +125,7 @@ cd web && pnpm gen:api
 ## 部署
 
 - 通用部署（systemd + Caddy/nginx、单 worker、备份）见 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)。
+- 同步（服务器自动 pull/push、本地脚本手动触发）见 [docs/SYNC.md](docs/SYNC.md)。
 - 项目与 wiki 仓库的边界、Obsidian 同步见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) 与 [docs/OBSIDIAN.md](docs/OBSIDIAN.md)。
 - 一个真实部署案例（私有 fork + 书稿阅读器插件）见 [docs/DEPLOYMENT_CASE_PMWIKI.md](docs/DEPLOYMENT_CASE_PMWIKI.md)。
 
