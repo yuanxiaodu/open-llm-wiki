@@ -11,7 +11,8 @@ An open-source, self-hosted knowledge base maintained by an AI agent. Chat with 
 
 ## 特性
 
-- **智能体维护 wiki**：`read` / `search` / `write_page` / `edit_page` / `lint` 等工具，写页自动维护 `index.md` / `log.md` 并提交 Git。
+- **智能体维护 wiki**：`read` / `search` / `write_page` / `edit_page` / `lint` 等工具，写页自动追加 `log.md` 并提交 Git；`index.md` / `SCHEMA.md` 是生成物，不进 Git。
+- **标准 git 同步**：服务器每个回合开始 `pull`、结束 `push`；本地 vault 由一句话触发 `scripts/sync-local.sh`（commit → pull --rebase → push）。冲突停在人面前，不 force push。
 - **多来源摄入**：PDF、Word、PPT、Excel、图片、网页、粘贴文字；长文档走后台分块编译（`ingest_document`）。
 - **多用户**：登录、邀请注册、管理员、只读/建设权限、对话可见范围。
 - **SSE 流式对话**：工具事件、断线续读、消息落库。

@@ -39,8 +39,11 @@ plugins/<id>/        可选插件（后端 + 前端入口）
 ## 写页与 Git
 
 - 页面 path 形如 `{dir}/{slug}.md`，type 决定目录。
-- 写路径先做形状/并发/恒等校验，再落盘；页面 + `index.md` + `log.md` 一次 commit。
-- `SCHEMA.md` 是派生文件：wiki.toml 变化时重写并提交。
+- 写路径先做形状/并发/恒等校验，再落盘；页面 + `log.md` 一次 commit。
+- `index.md` / `SCHEMA.md` 是生成物：每次启动/写页重建，留在工作区但不进 Git。
+- `log.md` 是追加式文件；`.gitattributes` 里 `merge=union`，两端追加都保留。
+- 服务端每个 agent 回合开始 `git pull --rebase`，回合结束 `git push`；非快进自动 rebase 重试，冲突停止。
+- 本地 vault 由 `scripts/sync-local.sh` 做同样的标准 git 流程，由用户在 Hermes 里一句话触发。
 - 项目仓库与 wiki 仓库的提交互不影响。
 
 ## 插件

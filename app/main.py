@@ -25,7 +25,7 @@ from .observability import RequestIDMiddleware, configure_logging, init_sentry
 from .plugins import get_plugins
 from .routers import api
 from .routers.api.auth import healthz as _healthz
-from .services import document_ingest
+from .services import document_ingest, git_sync
 from .wiki import repo, store
 
 SESSION_MAX_AGE = 30 * 24 * 3600
@@ -54,6 +54,10 @@ async def lifespan(app: FastAPI):
     repo.ensure_repo()
     conn = connect()
     try:
+        # 2026-11-13：服务端自动同步。启动先 pull 一次，把本地 Hermes 已经推上来的
+        # 提交拿进来；冲突则拒绝启动（带着冲突写页会提交到 detached HEAD）。
+        # 没有 remote 的单机 vault/测试自动跳过。
+        git_sync.pull_on_startup(conn)
         # S5（计划 §1/§7）：把 data/wiki 幂等地准备成 Hermes 物理 vault —— 建目录、
         # 补 SCHEMA.md/index.md/log.md、迁移旧平文件布局（一次 commit）。读接口的
         # 契约（index/schema/log/lint、path 目录树）全都以这个布局为前提，所以它和

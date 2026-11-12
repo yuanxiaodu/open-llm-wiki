@@ -55,7 +55,7 @@ from openai.types.responses import ResponseTextDeltaEvent
 
 from ..db import utcnow
 from ..config import settings
-from ..services import chat as chat_service
+from ..services import chat as chat_service, git_sync
 from ..services.llm import make_model, model_settings
 from ..wiki import lint as wiki_lint
 from ..wiki_config import get_config
@@ -91,6 +91,12 @@ HISTORY_MAX = 24           # 喂给模型的最近多少条人话+智能体回�
 # 只会回一句 400 context length。截掉的是**最老**的那几条（模型要用旧材料还有
 # search/read 两个工具），最新的一条永远保留。
 HISTORY_CHAR_BUDGET = 60000
+
+# 回合开始的自动同步失败（2026-11-13）：冲突/脏工作区时不硬跑，让人先处理 git。
+SYNC_TEXT = (
+    "知识库仓库同步失败，这一轮没有开始：{detail}。"
+    "请先处理 wiki 仓库的 git 状态（冲突/未提交改动），再重发这条消息。"
+)
 
 # 收尾那一句：超轮之后不带工具再要一次，模型往往就乖乖给一句人话（计划 §19）。
 WRAP_UP_TEXT = (
@@ -202,6 +208,17 @@ async def run_turn(
             message_id=_open_agent_message(conn, session_id, db_lock),
             history=[],
         )
+        # 2026-11-13：回合开始先对齐远端，保证这一轮读到的库现状是新的。冲突/
+        # 脏工作区就停在这里，不拿旧状态继续写。
+        sync_report = await asyncio.to_thread(git_sync.pull_before_turn, conn)
+        if not sync_report.get("ok"):
+            detail = sync_report.get("error") or "未知原因"
+            conflicted = sync_report.get("conflicted") or []
+            if conflicted:
+                detail += "（冲突文件：" + "、".join(conflicted) + "）"
+            logger.warning("回合开始同步失败：%s", detail)
+            _fail(turn, "sync", SYNC_TEXT.format(detail=detail), None)
+            return
         agent, ctx = _build_agent(
             conn, session_id, actor_name, db_lock, turn.message_id,
             can_build_wiki=can_build_wiki, message_owner_id=message_owner_id, user_id=actor.get("id"),
@@ -277,6 +294,13 @@ async def run_turn(
     except Exception as exc:   # noqa: BLE001 —— 后台任务的最后一道，见上面的"为什么不抛"
         logger.error("智能体这一轮出错（actor=%s）：%r", actor_name, exc, exc_info=exc)
         _fail(turn, "internal", INTERNAL_TEXT, exc)
+    finally:
+        # 2026-11-13：回合结束把 store 的提交推回共享仓库。失败只记日志，不拖垮
+        # 这一轮已经发给用户的回答；下一次回合开始会再 pull/重试。
+        try:
+            await asyncio.to_thread(git_sync.push_after_turn, conn)
+        except Exception as exc:  # noqa: BLE001 —— 同步是旁路，封口已经完成
+            logger.warning("回合结束同步失败（actor=%s）：%r", actor_name, exc)
 
 
 # --- 装配 --------------------------------------------------------------------

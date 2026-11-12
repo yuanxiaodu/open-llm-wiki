@@ -23,7 +23,7 @@ def test_skill_is_the_bound_file_not_a_runtime_skill_library():
     assert prompt.SKILL_PATH.is_file()
     raw = prompt.SKILL_PATH.read_text(encoding="utf-8")
     assert raw.startswith("---\n")
-    assert prompt.SKILL_VERSION == "1.7.0"
+    assert prompt.SKILL_VERSION == "1.8.0"
     assert prompt.SKILL_BODY
     # frontmatter 不进 BASE_STYLE：模型不该看到 version/tools 这些元数据行。
     assert "version:" not in prompt.BASE_STYLE
@@ -74,6 +74,8 @@ def test_skill_keeps_the_hard_rules():
     assert "查询结果是否沉淀由你自己判断" in text
     assert "写页优先于凑清单" in text
     assert "SCHEMA.md" in text and "index.md" in text and "log.md" in text
+    # 2026-11-13：本地 Hermes 是第二个 writer，服务器自动 pull/rebuild/merge。
+    assert "第二写者" in text and "同步层会重建" in text
 
 
 def test_skill_never_reintroduces_private_chat_isolation():

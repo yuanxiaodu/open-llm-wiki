@@ -138,6 +138,11 @@ def _wiki_env() -> dict[str, str]:
         # slug 里出现 * [ ? 时按字面路径解释，不做 glob（裁定 R26）。
         # 否则 `a[1]*.md` 这种页会串到同形状的别的页上（head_sha/log/diff 全串）。
         "GIT_LITERAL_PATHSPECS": "1",
+        # 自动同步的 git 子进程不许停下来等输入：没有终端可答凭据/编辑器提示，
+        # 等下去就是 systemd 里挂死。凭据走部署机的 ssh key 或本地 file remote。
+        "GIT_TERMINAL_PROMPT": "0",
+        "GIT_EDITOR": "true",
+        "GIT_SEQUENCE_EDITOR": "true",
     }
 
 
@@ -220,6 +225,99 @@ def _has_head() -> bool:
     if proc.returncode == 1:
         return False
     raise _failure(args, proc)
+
+
+def tracked(paths: str | list[str] | tuple[str, ...]) -> list[str]:
+    """这些 path 里已经被版本库跟踪的那些（相对仓库根）。"""
+    files = _paths(paths)
+    out = _git("ls-files", "--", *files)
+    return [line for line in out.splitlines() if line]
+
+
+def untrack(paths: str | list[str] | tuple[str, ...], subject: str) -> str | None:
+    """把生成物从版本库移除，但文件留在工作区（`git rm --cached` + 一次 commit）。
+
+    2026-11-13：index.md / SCHEMA.md 改成生成物。它们仍在磁盘上给 UI/模型读，
+    但不再进 git；否则两个 writer 每次 pull 都要在生成物上做文本合并。
+    只提交这次移除本身，不碰工作区其它暂存改动。
+    """
+    files = [name for name in _paths(paths) if name in set(tracked(paths))]
+    if not files:
+        return None
+    with _INDEX_LOCK:
+        _git("rm", "--cached", "-q", "--", *files)
+        _git("commit", "-q", "-m", subject)
+        return _git("rev-parse", "HEAD").strip()
+
+
+def current_branch() -> str:
+    """当前分支名；detached HEAD 返回 "HEAD"。"""
+    return _git("rev-parse", "--abbrev-ref", "HEAD").strip()
+
+
+def has_remote(name: str) -> bool:
+    """remote 是否存在；没有 remote 的测试/单机 vault 让自动同步直接跳过。"""
+    try:
+        out = _git("remote")
+    except GitError:
+        return False
+    return name in out.split()
+
+
+def is_clean() -> bool:
+    """工作区（含未跟踪文件）是否干净。"""
+    return not _git("status", "--porcelain").strip()
+
+
+def status_short() -> str:
+    """`git status --porcelain` 原文；同步报告的诊断用。"""
+    return _git("status", "--porcelain")
+
+
+def fetch_branch(remote: str, branch: str) -> None:
+    """fetch 一个分支到 `refs/remotes/<remote>/<branch>`，不动工作树。"""
+    _check_ref(remote)
+    _check_ref(branch)
+    _git("fetch", "--prune", remote, f"+refs/heads/{branch}:refs/remotes/{remote}/{branch}")
+
+
+def ahead_behind(remote: str, branch: str) -> tuple[int, int]:
+    """(behind, ahead)：本地 HEAD 相对 `<remote>/<branch>` 落后/领先几个提交。"""
+    _check_ref(remote)
+    _check_ref(branch)
+    out = _git("rev-list", "--left-right", "--count", f"{remote}/{branch}...HEAD").strip()
+    behind, ahead = out.split()
+    return int(behind), int(ahead)
+
+
+def pull_rebase(remote: str, branch: str) -> None:
+    """标准 `git pull --rebase`：有本地提交就 rebase 到远端，没有就快进。"""
+    _check_ref(remote)
+    _check_ref(branch)
+    _git("pull", "--rebase", "--no-stat", remote, branch)
+
+
+def push_head(remote: str, branch: str) -> None:
+    """把当前 HEAD 推到远端分支；非快进会抛 GitError，由同步层决定 pull+重试。"""
+    _check_ref(remote)
+    _check_ref(branch)
+    _git("push", remote, f"HEAD:refs/heads/{branch}")
+
+
+def abort_rebase() -> None:
+    """尽力 abort 一个卡住的 rebase；没有 rebase 时静默。"""
+    try:
+        _git("rebase", "--abort")
+    except (GitError, subprocess.TimeoutExpired, OSError):
+        pass
+
+
+def conflicted_paths() -> list[str]:
+    """rebase/merge 冲突的文件（相对仓库根）。"""
+    return [
+        line for line in _git("diff", "--name-only", "--diff-filter=U").splitlines()
+        if line
+    ]
 
 
 def head_sha(path: str) -> str | None:

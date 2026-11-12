@@ -51,6 +51,11 @@ class Settings:
     # 只能看不能写；写只走智能体的工具（它们直接调 store，不经 HTTP）。测试与
     # 开发机把它设成 0 才能用 API 造数据。
     wiki_readonly: bool
+    # 服务端自动 git 同步（2026-11-13）：每个回合开始 pull、结束 push；没有 remote
+    # 的测试/单机 vault 自动跳过。默认开，`WIKI_AUTO_SYNC=0` 可关。
+    wiki_auto_sync: bool
+    wiki_git_remote: str
+    wiki_git_branch: str
     # 可观测性（S12 最小集）：全部可选，默认不联网。
     # sentry_dsn 为空 = 完全关闭 Sentry（进程不发任何网络请求）；有值时由
     # app/observability.init_sentry 初始化一次，DSN 不落日志。
@@ -139,6 +144,10 @@ settings = Settings(
     text_model=os.environ.get("LLM_MODEL") or os.environ.get("TEXT_MODEL", "deepseek-flash"),
     wiki_readonly=os.environ.get("WIKI_READONLY", "1").strip().lower()
     not in ("0", "false", "no", "off"),
+    wiki_auto_sync=os.environ.get("WIKI_AUTO_SYNC", "1").strip().lower()
+    not in ("0", "false", "no", "off"),
+    wiki_git_remote=(os.environ.get("WIKI_REMOTE", "origin").strip() or "origin"),
+    wiki_git_branch=(os.environ.get("WIKI_BRANCH", "main").strip() or "main"),
     # 可观测性（S12）：默认全关/本地可读。
     sentry_dsn=os.environ.get("SENTRY_DSN", "").strip(),
     environment=(os.environ.get("ENVIRONMENT", "production").strip() or "production"),

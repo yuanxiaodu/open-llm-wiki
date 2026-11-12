@@ -65,6 +65,20 @@ INDEX_FILE = "index.md"
 LOG_FILE = "log.md"
 LOG_HEADER = "# 行动日志\n\n"
 
+# 2026-11-13：index/SCHEMA 是生成物，留在磁盘给 UI/模型读，但不进 git。
+# 两个 writer 每次 pull 都在生成物上做文本合并，必然漂移；git 只该管页面和 log。
+GENERATED_FILES = (SCHEMA_FILE, INDEX_FILE)
+GENERATED_COMMIT_SUBJECT = "wiki|edit|_vault_|system|index/SCHEMA 改为生成物"
+GITIGNORE_LINES = (
+    ".DS_Store",
+    "index.md",
+    "SCHEMA.md",
+)
+GITATTRIBUTES_LINES = (
+    "log.md merge=union",
+    "log-*.md merge=union",
+)
+
 # 裁定 R47：提交主题里的 action 字段只认这几个值（S9 加 delete：删页也是一次提交）。
 ACTIONS = ("create", "edit", "revert", "delete")
 
@@ -610,6 +624,19 @@ def read_raw(rel: str) -> str | None:
         return None
 
 
+def _append_missing_lines(path: Path, lines: tuple[str, ...]) -> bool:
+    """把缺失的行追加到文件末尾；文件原有的内容一行不动。返回是否写过。"""
+    current = _read_text(path) or ""
+    present = set(current.splitlines())
+    missing = [line for line in lines if line not in present]
+    if not missing:
+        return False
+    if current and not current.endswith("\n"):
+        current += "\n"
+    path.write_text(current + "\n".join(missing) + "\n", encoding="utf-8")
+    return True
+
+
 def _index_text() -> str:
     """自动生成的 index.md：标题、最后更新时间、总页数，然后按 type 分节。"""
     config = get_config()
@@ -709,25 +736,33 @@ def ensure_vault(conn=None) -> dict:
         changed.append(LOG_FILE)
         created.append(LOG_FILE)
 
-    # SCHEMA.md 是 wiki.toml 的派生物：配置变了就重写，与 index/log 同一次提交。
+    # SCHEMA.md / index.md 是生成物：每次启动按配置/页面重写，但**不进 commit**。
     schema_path = _path(SCHEMA_FILE)
     schema_existed = schema_path.exists()
     schema_text = _schema_text()
     if _read_text(schema_path) != schema_text:
         schema_path.write_text(schema_text, encoding="utf-8")
-        if SCHEMA_FILE not in changed:
-            changed.append(SCHEMA_FILE)
         if not schema_existed:
             created.append(SCHEMA_FILE)
 
     index_path = _path(INDEX_FILE)
+    index_existed = index_path.exists()
     index_text = _index_text()
     if _read_text(index_path) != index_text:
         index_path.write_text(index_text, encoding="utf-8")
-        if INDEX_FILE not in changed:
-            changed.append(INDEX_FILE)
-        if INDEX_FILE not in created:
+        if not index_existed:
             created.append(INDEX_FILE)
+
+    # 仓库级 .gitignore/.gitattributes：生成物不进 git；log 追加用 union 合并。
+    for name, lines in (
+        (".gitignore", GITIGNORE_LINES),
+        (".gitattributes", GITATTRIBUTES_LINES),
+    ):
+        try:
+            if _append_missing_lines(_path(name), lines) and name not in changed:
+                changed.append(name)
+        except OSError as exc:
+            raise StoreError(f"{name} 写不下去：{exc}") from exc
 
     if changed:
         subject = (
@@ -739,10 +774,18 @@ def ensure_vault(conn=None) -> dict:
             repo.commit(changed, subject)
         except (repo.GitError, subprocess.TimeoutExpired, OSError) as exc:
             raise StoreError(f"vault 没初始化成：{exc}") from exc
+
+    # 旧 vault 里 index/SCHEMA 曾被跟踪：这里做一次迁移，把它们从索引里移除，
+    # 文件留在磁盘。新 vault 没有 tracked 的生成物，untrack 是 no-op。
+    try:
+        untracked = repo.untrack(GENERATED_FILES, GENERATED_COMMIT_SUBJECT)
+    except (repo.GitError, subprocess.TimeoutExpired, OSError) as exc:
+        raise StoreError(f"生成物从版本库移除失败：{exc}") from exc
     return {
         "created": created,
         "changed": changed,
         "migrated": migration,
+        "untracked": untracked,
         "changed_any": bool(changed),
     }
 
@@ -1271,10 +1314,10 @@ def _write(
         return _result(_failed(f"文件写不下去，这一页没写成：{exc}"), rel, slug)
 
     try:
-        sha = repo.commit([rel, INDEX_FILE, LOG_FILE], subject)
+        sha = repo.commit([rel, LOG_FILE], subject)
     except (repo.GitError, subprocess.TimeoutExpired, OSError) as exc:
         # 裁定 R45：撤下三份的暂存 + 工作区逐字退回写之前，不留残局。
-        repo.unstage([rel, INDEX_FILE, LOG_FILE])
+        repo.unstage([rel, LOG_FILE])
         _restore(path, snapshots[0][1])
         _restore(index_path, snapshots[1][1])
         _restore(log_path, snapshots[2][1])
@@ -1438,10 +1481,10 @@ def delete_page_sync(
         return _result(_failed(f"文件删不下去，这一页没删成：{exc}"), rel, slug)
 
     try:
-        sha = repo.commit([rel, INDEX_FILE, LOG_FILE], subject)
+        sha = repo.commit([rel, LOG_FILE], subject)
     except (repo.GitError, subprocess.TimeoutExpired, OSError) as exc:
         # 与写路径同口径：撤下三份的暂存 + 工作区逐字退回删之前，不留残局。
-        repo.unstage([rel, INDEX_FILE, LOG_FILE])
+        repo.unstage([rel, LOG_FILE])
         _restore(page_path, snapshots[0][1])
         _restore(index_path, snapshots[1][1])
         _restore(log_path, snapshots[2][1])

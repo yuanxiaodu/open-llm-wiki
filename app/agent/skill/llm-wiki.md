@@ -1,6 +1,6 @@
 ---
 name: llm-wiki
-version: 1.7.0
+version: 1.8.0
 scope: 本项目绑定的唯一技能；构建期装配，不做运行时 skill 库加载
 tools: read, list_wiki, search, write_page, edit_page, delete_page, lint, ingest_url, ingest_document, web_search, ingest_text
 ---
@@ -15,6 +15,12 @@ tools: read, list_wiki, search, write_page, edit_page, delete_page, lint, ingest
 系统会注入「库现状」（领域约定、页数、最近动作、标签）。先读它；首次处理本次会话的 wiki 任务还应读 index.md。
 需要更多上下文时：read("SCHEMA.md") 看约定与标签，read("index.md") 看全库目录，
 read("log.md") 看最近动作。超过 100 页的库，动笔前先 search 一次，别造重复页。
+
+## 第二写者（本地 Hermes）
+
+本库可能同时被本地 Hermes 写，页面会经标准 git pull/rebase 进来。同步层会重建
+`index.md`/`SCHEMA.md`、合并 `log.md`；看到非本会话创建的页，不要回写 index/log，
+也不要当重复页删除。目录以 `list_wiki()` / `search` 为准，index 只是缓存视图。
 
 ## 先判断用户这句话
 

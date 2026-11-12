@@ -6,9 +6,9 @@ wiki 仓库就是普通 Markdown + Git，可以直接用 Obsidian 打开。它�
 
 ```
 WIKI_DIR/
-  SCHEMA.md        # 由 wiki.toml 生成，不要手改
-  index.md         # 应用自动维护
-  log.md           # 应用自动维护
+  SCHEMA.md        # 由 wiki.toml 生成；生成物，不进 Git
+  index.md         # 从页面重建；生成物，不进 Git
+  log.md           # 追加式行动日志；跟踪，merge=union
   raw/
   entities/
   concepts/
@@ -34,23 +34,31 @@ WIKI_CONFIG=./wiki.toml
 
 适合“线上应用写服务端 vault，作者在本地 Obsidian 编辑再发布”：
 
-- 服务端 `WIKI_DIR=./data/wiki`（应用读写）。
+- 服务端 `WIKI_DIR=./data/wiki`（应用读写），`origin` 指向共享 bare 仓库。
 - 本地 `WIKI_LOCAL_VAULT=~/Documents/Knowledge/my-wiki`（独立 clone，Obsidian 打开）。
-- 同步脚本做：本地预检 → commit/push outbox → 调服务端 `app.cli sync` 逐页重放 → 成功后对齐。
-- `WIKI_LOCAL_VAULT` 只给脚本用，应用不读；两边的 Git 历史最终通过 wiki 仓库的 remote 合并。
+- 服务端：每个 agent 回合开始 `git pull --rebase`，回合结束 `git push`；没有 remote 时自动跳过。
+- 本地：在 Hermes 里说“同步 wiki / 发布 / 对齐线上”，agent 调 `scripts/sync-local.sh`：
+  commit → `pull --rebase` → push → 重建本地 `index.md`。冲突时脚本 abort rebase、退出码 2。
 
-本仓库核心提供 `app.cli sync`（服务端逐页重放）；具体同步脚本属于部署方（PM_wiki 私有 fork 的 `scripts/pmwiki/sync_vault_wiki.sh` 是一个案例）。
+两端都是标准 git，不再有 outbox 分支或 `app.cli sync` 逐页重放。`SCHEMA.md` / `index.md`
+是生成物，不跟踪；`log.md` 用 `.gitattributes` 的 `merge=union` 追加合并。
+
+服务端也可以手动跑：
+
+```bash
+python -m app.cli git-pull    # pull --rebase + 重建 index/FTS
+python -m app.cli git-push    # push；非快进自动 rebase 重试
+python -m app.cli git-status  # 只读：ahead/behind/dirty
+```
 
 ## 本地 vault 的 .gitignore
 
-同步模式建议让派生文件/材料不进 outbox：
+同步模式建议：
 
 ```gitignore
-.gitignore
 .DS_Store
 raw/
 index.md
-log.md
 SCHEMA.md
 *.pdf
 *.docx
@@ -59,7 +67,9 @@ SCHEMA.md
 *.png
 ```
 
-`SCHEMA.md` 由服务端按 `wiki.toml` 生成；本地手改会在下一次生成时被覆盖。
+`log.md` 要跟踪（它是共享历史）；`index.md` / `SCHEMA.md` 由应用重建，不跟踪。
+同步脚本会自动补齐 `.gitignore` / `.gitattributes`，并把旧 vault 里误跟踪的
+`index.md` / `SCHEMA.md` 从索引移除（文件留在磁盘）。
 
 ## 与项目仓库的边界
 

@@ -84,10 +84,18 @@ def _raw_git(cwd, *args) -> str:
 
 
 def _index_and_worktree(cwd) -> tuple[str, str]:
-    """(暂存区里有哪些路径, 工作区/索引整体脏不脏)。都该是空的。"""
+    """(暂存区里有哪些路径, 工作区/索引整体脏不脏)。都该是空的。
+
+    2026-11-13 起 index.md/SCHEMA.md 是未跟踪的生成物，`git status` 会报 `??`；
+    对"写完/失败后残留"的判据要扣掉这两行，否则每个用例都假脏。
+    """
+    status = "".join(
+        line for line in _raw_git(cwd, "status", "--porcelain").splitlines(keepends=True)
+        if line.strip() not in ("?? index.md", "?? SCHEMA.md")
+    )
     return (
         _raw_git(cwd, "diff", "--cached", "--name-only").split(),
-        _raw_git(cwd, "status", "--porcelain"),
+        status,
     )
 
 
@@ -132,9 +140,11 @@ def test_write_ok_commits_page_index_log_and_records(conn, tmp_wiki, member):
     assert f"- path: {rel}" in log_text
     assert "- actor: 张三" in log_text
 
-    # 三份同一个 commit（计划 §2）
+    # 2026-11-13：index/SCHEMA 是生成物，只有页面 + log 进 commit。
     changed = _raw_git(tmp_wiki, "show", "--name-only", "--format=", res["sha"]).split()
-    assert sorted(changed) == sorted([rel, "index.md", "log.md"])
+    assert sorted(changed) == sorted([rel, "log.md"])
+    assert (tmp_wiki / "index.md").is_file()
+    assert "index.md" not in _raw_git(tmp_wiki, "ls-files")
 
 
 def test_write_creates_vault_dirs_on_demand(conn, tmp_wiki):
@@ -769,7 +779,7 @@ def test_commit_crash_restores_page_index_log_and_leaves_index_clean(
         for path in ([paths] if isinstance(paths, str) else paths):
             _raw_git(tmp_wiki, "add", "--", path)
         assert sorted(_raw_git(tmp_wiki, "diff", "--cached", "--name-only").split()) == sorted(
-            [rel, "index.md", "log.md"]
+            [rel, "log.md"]
         )
         raise boom_exc
 
@@ -1271,7 +1281,11 @@ def test_ensure_vault_creates_layout_and_special_files_once(vault, tmp_wiki):
     commits = _count_commits(tmp_wiki)
     assert commits == 1
     tracked = _raw_git(tmp_wiki, "ls-files").split()
-    assert sorted(tracked) == ["SCHEMA.md", "index.md", "log.md"]
+    # 2026-11-13：SCHEMA/index 是生成物，不进版本库；log 与两个 repo 元文件进。
+    assert sorted(tracked) == [".gitattributes", ".gitignore", "log.md"]
+    assert (tmp_wiki / "index.md").is_file()
+    assert (tmp_wiki / "SCHEMA.md").is_file()
+    assert "index.md" not in tracked and "SCHEMA.md" not in tracked
 
     result = store.ensure_vault()
     assert result["changed"] == [] and result["changed_any"] is False

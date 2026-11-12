@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 
 from .config import settings
 from .db import connect, init_db, utcnow
+from .services import git_sync
 from .services.auth import (
     create_reset_invite,
     hash_password,
@@ -221,6 +222,65 @@ def sync(args: argparse.Namespace) -> None:
         sys.exit(1)
 
 
+def git_pull(args: argparse.Namespace) -> None:
+    """服务端：标准 `git pull --rebase`，随后重建 index/SCHEMA 与 FTS。"""
+    init_db()
+    try:
+        repo.ensure_repo()
+    except repo.GitError as exc:
+        sys.exit(f"data/wiki 的版本库没建起来：{exc}")
+    conn = connect()
+    try:
+        report = git_sync.pull(conn, reason="cli", allow_dirty=args.allow_dirty)
+    finally:
+        conn.close()
+    print(json.dumps(report, ensure_ascii=False, indent=2) if args.json else _git_report_text(report))
+    if not report.get("ok"):
+        sys.exit(1)
+
+
+def git_push(args: argparse.Namespace) -> None:
+    """服务端：标准 `git push`；非快进自动 pull --rebase 重试一次。"""
+    init_db()
+    try:
+        repo.ensure_repo()
+    except repo.GitError as exc:
+        sys.exit(f"data/wiki 的版本库没建起来：{exc}")
+    conn = connect()
+    try:
+        report = git_sync.push(conn, reason="cli")
+    finally:
+        conn.close()
+    print(json.dumps(report, ensure_ascii=False, indent=2) if args.json else _git_report_text(report))
+    if not report.get("ok"):
+        sys.exit(1)
+
+
+def git_status(args: argparse.Namespace) -> None:
+    """只读：fetch + ahead/behind/dirty/rebase 状态。"""
+    report = git_sync.status()
+    print(json.dumps(report, ensure_ascii=False, indent=2) if args.json else _git_report_text(report))
+    if not report.get("ok"):
+        sys.exit(1)
+
+
+def _git_report_text(report: dict) -> str:
+    if report.get("skipped"):
+        return f"同步跳过：{report['skipped']}（remote={report.get('remote')}）"
+    if report.get("error"):
+        extra = report.get("conflicted") or []
+        return f"同步失败：{report['error']}" + (
+            f"\n冲突文件：{'、'.join(extra)}" if extra else ""
+        )
+    if "behind" in report:
+        return (
+            f"远端 {report.get('remote')}/{report.get('branch')}："
+            f"落后 {report.get('behind')} / 领先 {report.get('ahead')}；"
+            f"工作区{'脏' if report.get('dirty') else '干净'}"
+        )
+    return f"同步完成：{json.dumps(report, ensure_ascii=False)}"
+
+
 def _sync_report_text(report: dict) -> str:
     if report.get("error"):
         return f"同步没开始：{report['error']}"
@@ -314,8 +374,23 @@ def main() -> None:
     p_config.add_argument("--json", action="store_true", help="输出 JSON（脚本用）")
     p_config.set_defaults(func=show_config)
 
+    p_git_pull = sub.add_parser(
+        "git-pull", help="标准 git pull --rebase（服务端自动同步用；重建 index/FTS）"
+    )
+    p_git_pull.add_argument("--allow-dirty", action="store_true", help="工作区脏也尝试 pull")
+    p_git_pull.add_argument("--json", action="store_true", help="输出 JSON（脚本用）")
+    p_git_pull.set_defaults(func=git_pull)
+
+    p_git_push = sub.add_parser("git-push", help="标准 git push（非快进自动 rebase 重试）")
+    p_git_push.add_argument("--json", action="store_true", help="输出 JSON（脚本用）")
+    p_git_push.set_defaults(func=git_push)
+
+    p_git_status = sub.add_parser("git-status", help="只读：fetch + ahead/behind/dirty")
+    p_git_status.add_argument("--json", action="store_true", help="输出 JSON（脚本用）")
+    p_git_status.set_defaults(func=git_status)
+
     p_sync = sub.add_parser(
-        "sync", help="把本机 Hermes 的 outbox 分支重放进线上 wiki（本地优先）"
+        "sync", help="【兼容】旧的 outbox 逐页重放（新部署请用 git-pull/git-push）"
     )
     p_sync.add_argument("--branch", help="outbox 分支，例如 hermes/mac；不给则要求远端恰好一个")
     p_sync.add_argument("--remote", default="origin", help="git remote 名（默认 origin）")
