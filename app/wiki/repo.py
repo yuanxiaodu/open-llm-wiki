@@ -241,7 +241,8 @@ def untrack(paths: str | list[str] | tuple[str, ...], subject: str) -> str | Non
     但不再进 git；否则两个 writer 每次 pull 都要在生成物上做文本合并。
     只提交这次移除本身，不碰工作区其它暂存改动。
     """
-    files = [name for name in _paths(paths) if name in set(tracked(paths))]
+    present = set(tracked(paths))
+    files = [name for name in _paths(paths) if name in present]
     if not files:
         return None
     with _INDEX_LOCK:
@@ -259,7 +260,7 @@ def has_remote(name: str) -> bool:
     """remote 是否存在；没有 remote 的测试/单机 vault 让自动同步直接跳过。"""
     try:
         out = _git("remote")
-    except GitError:
+    except (GitError, subprocess.TimeoutExpired, OSError):
         return False
     return name in out.split()
 
