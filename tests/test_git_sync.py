@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 
@@ -140,3 +141,114 @@ def test_dirty_worktree_refuses_pull(pair: GitPair, conn):
     report = git_sync.pull(conn, reason="test")
     assert not report["ok"] and report.get("dirty")
     (pair.server / "dirty.txt").unlink()
+
+
+def test_run_turn_pulls_before_start_and_pushes_after(conn, member, monkeypatch):
+    """runner 的接线：回合开始 pull，失败也走封口；finally 仍会 push。"""
+    import asyncio
+
+    from app.agent import runner
+
+    calls: list[str] = []
+
+    def fake_pull(_conn):
+        calls.append("pull")
+        return {"ok": False, "error": "模拟冲突", "conflicted": ["concepts/x.md"]}
+
+    def fake_push(_conn):
+        calls.append("push")
+        return {"ok": True}
+
+    monkeypatch.setattr(runner.git_sync, "pull_before_turn", fake_pull)
+    monkeypatch.setattr(runner.git_sync, "push_after_turn", fake_push)
+
+    asyncio.run(runner.run_turn(
+        conn, member.session_id, {"id": member.user_id, "name": member.name},
+    ))
+
+    assert calls == ["pull", "push"]
+    event = conn.execute(
+        "SELECT type, payload_json FROM agent_events WHERE session_id=? ORDER BY seq DESC LIMIT 1",
+        (member.session_id,),
+    ).fetchone()
+    assert event and event["type"] == "error"
+    assert "同步失败" in event["payload_json"]
+
+
+def _git_ok(cwd: Path, *args: str) -> None:
+    subprocess.run(("git", *args), cwd=cwd, check=True, capture_output=True, text=True)
+
+
+def _seed_bare(tmp_path: Path) -> tuple[Path, Path, Path]:
+    """bare + seed（先推 main）+ local clone。"""
+    bare = tmp_path / "bare.git"
+    _git_ok(tmp_path, "init", "-q", "--bare", str(bare))
+    seed = tmp_path / "seed"
+    _git_ok(tmp_path, "clone", "-q", str(bare), str(seed))
+    _git_ok(seed, "config", "user.email", "seed@local")
+    _git_ok(seed, "config", "user.name", "Seed")
+    (seed / "concepts").mkdir()
+    (seed / "concepts" / "base.md").write_text(_page("基线", "第一版"), encoding="utf-8")
+    _git_ok(seed, "add", "-A")
+    _git_ok(seed, "commit", "-q", "-m", "base")
+    _git_ok(seed, "push", "-q", "origin", "HEAD:refs/heads/main")
+
+    local = tmp_path / "local"
+    _git_ok(tmp_path, "clone", "-q", str(bare), str(local))
+    _git_ok(local, "config", "user.email", "hermes@local")
+    _git_ok(local, "config", "user.name", "Hermes")
+    return bare, seed, local
+
+
+def _run_local_script(local: Path, message: str) -> subprocess.CompletedProcess:
+    script = Path(__file__).resolve().parents[1] / "scripts" / "sync-local.sh"
+    env = {
+        **os.environ,
+        "WIKI_LOCAL_VAULT": str(local),
+        "WIKI_REMOTE": "origin",
+        "WIKI_BRANCH": "main",
+        "WIKI_LOCAL_PYTHON": "/nonexistent/python",
+    }
+    return subprocess.run(
+        ("bash", str(script), "-m", message),
+        env=env, capture_output=True, text=True, timeout=60,
+    )
+
+
+def test_local_script_commits_pulls_and_pushes(tmp_path):
+    bare, _seed, local = _seed_bare(tmp_path)
+    rel = "concepts/script-sync.md"
+    (local / rel).write_text(_page("脚本同步", "本地先写"), encoding="utf-8")
+
+    result = _run_local_script(local, "本地脚本同步")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "本地先写" in _git_ok_show(bare, f"main:{rel}")
+    assert (local / ".gitattributes").is_file()
+    assert (local / ".gitignore").is_file()
+
+
+def test_local_script_stops_on_conflict(tmp_path):
+    _bare, seed, local = _seed_bare(tmp_path)
+    rel = "concepts/base.md"
+    (local / rel).write_text(_page("基线", "本地版本"), encoding="utf-8")
+    assert _run_local_script(local, "本地先推").returncode == 0
+
+    _git_ok(seed, "pull", "-q", "--rebase", "origin", "main")
+    (seed / rel).write_text(_page("基线", "服务端版本"), encoding="utf-8")
+    _git_ok(seed, "commit", "-qam", "server edit")
+    _git_ok(seed, "push", "-q", "origin", "HEAD:refs/heads/main")
+
+    (local / rel).write_text(_page("基线", "本地再改"), encoding="utf-8")
+    result = _run_local_script(local, "本地再推")
+
+    assert result.returncode == 2, result.stdout + result.stderr
+    assert "同步冲突" in result.stderr
+    assert not (local / ".git" / "rebase-merge").exists()
+    assert not (local / ".git" / "rebase-apply").exists()
+
+
+def _git_ok_show(cwd: Path, spec: str) -> str:
+    return subprocess.run(
+        ("git", "show", spec), cwd=cwd, check=True, capture_output=True, text=True,
+    ).stdout
