@@ -58,6 +58,15 @@ scripts/sync-local.sh -m "本次改了什么"
 scripts/sync-local.sh --status
 ```
 
+Hermes 原装技能不知道这个脚本；在本地 vault 根放一份 `AGENTS.override.md`（建议加进
+`.git/info/exclude`，只在本机生效），把用户的话映射到脚本即可，不用改技能：
+
+```markdown
+用户说「同步 wiki / 发布 / 对齐线上」时，运行：
+scripts/sync-local.sh -m "<本批说明>"
+遇到退出码 2 就停下报告冲突文件，不要 force push。
+```
+
 ## 冲突处理
 
 - 页面冲突：脚本/服务端都 abort，不自动选边；人/agent 解决后重跑。
