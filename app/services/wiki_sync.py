@@ -1,4 +1,8 @@
-"""本机 Hermes vault → 线上 wiki 的同步器（2026-10-30，委托人裁定：本地权威、手动发布）。
+"""【兼容层】本机 Hermes vault → 线上 wiki 的旧同步器（2026-10-30，本地权威）。
+
+2026-11-13 起新部署不再走这里：服务端由 `services.git_sync` 在每个 agent 回合
+开始/结束做标准 `git pull --rebase` / `git push`；本地由 `scripts/sync-local.sh`
+做同样的标准 git 流程。本模块保留给旧 outbox 脚本与 `app.cli sync` 兼容。
 
 拓扑与职责：
 
