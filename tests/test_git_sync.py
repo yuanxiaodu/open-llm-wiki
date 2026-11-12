@@ -248,7 +248,31 @@ def test_local_script_stops_on_conflict(tmp_path):
     assert not (local / ".git" / "rebase-apply").exists()
 
 
+def _git_show(cwd: Path, spec: str) -> str:
+    return subprocess.run(
+        ("git", "show", spec), cwd=cwd, check=True, capture_output=True, text=True,
+    ).stdout
+
+
 def _git_ok_show(cwd: Path, spec: str) -> str:
     return subprocess.run(
         ("git", "show", spec), cwd=cwd, check=True, capture_output=True, text=True,
     ).stdout
+
+
+def test_push_retries_after_non_fast_forward(pair: GitPair, conn):
+    """两端各写一页：先推的一方赢，后推的一方 push 被拒 → pull --rebase → 再推成功。"""
+    server_rel = "concepts/server-race.md"
+    local_rel = "concepts/local-race.md"
+    res = store.write_page_sync(
+        conn, path=server_rel, title="服务端竞态页", page_type="concept",
+        body_md="服务端写的。", actor="服务器", note="竞态",
+    )
+    assert res["ok"], res
+    _local_commit(pair.local, local_rel, _page("本地竞态页", "本地写的。"), "local race")
+
+    report = git_sync.push(conn, reason="test")
+
+    assert report["ok"] and report.get("retried"), report
+    assert _git_show(pair.remote, f"main:{server_rel}") 
+    assert _git_show(pair.remote, f"main:{local_rel}")
