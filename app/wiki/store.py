@@ -671,6 +671,20 @@ def _index_text() -> str:
     return "\n".join(lines) + "\n"
 
 
+def write_schema() -> str:
+    """把 SCHEMA.md 按当前 wiki.toml 重写到磁盘（生成物，不 commit）。
+
+    本地同步脚本用它刷新本地 SCHEMA：这个文件不跟踪 Git，但原装 Hermes 技能会读它
+    来判断 index/log 的维护约定，所以它必须跟服务端生成的一致。
+    """
+    _ensure_dirs()
+    text = _schema_text()
+    path = _path(SCHEMA_FILE)
+    if _read_text(path) != text:
+        path.write_text(text, encoding="utf-8")
+    return text
+
+
 @_serialized_write
 def rebuild_index(conn=None) -> str:
     """重写 index.md 并返回正文（不提交；调用方负责 commit）。

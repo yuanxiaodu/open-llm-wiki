@@ -114,7 +114,7 @@ fi
 
 if [ -x "$PY" ]; then
   ( cd "$REPO" && WIKI_DIR="$VAULT" WIKI_CONFIG="${WIKI_CONFIG:-wiki.toml}" \
-      "$PY" -c 'from app.wiki import store; store.rebuild_index()' ) \
+      "$PY" -c 'from app.wiki import store; store.write_schema(); store.rebuild_index()' ) \
     >/dev/null 2>&1 || echo "提示：本地 index 重建失败（不影响已推送的页面）" >&2
 fi
 

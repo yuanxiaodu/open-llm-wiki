@@ -139,8 +139,8 @@ class WikiConfig:
             "（entity/concept/comparison/query/summary）。",
             "- 来源：材料/链接写在 frontmatter 的 `sources` 里；正文不强制逐句引注。",
             "- 页面互链用 `[[slug]]` 或 `[[slug|显示文字]]`；每页至少 2 个出链。",
-            "- `index.md` / `log.md` 由服务端自动维护，**禁止手改**；"
-            "`SCHEMA.md` 由 wiki.toml 生成，lint 读它的 tags 做校验。",
+            "- `index.md` / `SCHEMA.md` 是生成物（从页面/配置重建，不跟踪 Git）；"
+            "`log.md` 是追加式共享历史（跟踪，合并用 `merge=union`）。",
             "- 矛盾显式记录：在 frontmatter 写 `contested: true` 与 "
             "`contradictions: [other-slug]`。",
         ]
