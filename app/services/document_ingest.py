@@ -141,9 +141,13 @@ def _schema_tags() -> list[str]:
     for line in rest.splitlines():
         item = line.strip()
         if item.startswith("- "):
-            tag = item[2:].strip()
-            if tag and tag not in tags:
-                tags.append(tag)
+            value = item[2:].strip()
+            if ":" in value:
+                value = value.split(":", 1)[1]
+            for tag in re.split(r"[,，、;；]", value):
+                tag = tag.strip().strip("`* ")
+                if tag and tag not in tags:
+                    tags.append(tag)
     return tags
 
 

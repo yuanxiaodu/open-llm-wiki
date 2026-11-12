@@ -64,9 +64,13 @@ def schema_tags() -> set[str] | None:
     for line in rest.splitlines():
         item = line.strip()
         if item.startswith("- "):
-            tag = item[2:].strip()
-            if tag:
-                tags.add(tag)
+            value = item[2:].strip()
+            if ":" in value:
+                value = value.split(":", 1)[1]
+            for tag in re.split(r"[,，、;；]", value):
+                tag = tag.strip().strip("`* ")
+                if tag:
+                    tags.add(tag)
     return tags
 
 
