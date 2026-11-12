@@ -15,7 +15,7 @@ local Obsidian clone (separate git, sync scripts)
 ```
 
 - **项目仓库**：与上游 core 保持一致；只新增部署覆盖层。
-- **wiki 仓库**：独立 Git 仓库，存页面和生成的 `SCHEMA.md`/`index.md`/`log.md`。
+- **wiki 仓库**：独立 Git 仓库，存页面、`log.md`、`raw/`；`SCHEMA.md`/`index.md` 是生成物，不进 Git。
 - **本地 Obsidian clone**：可选的另一份 clone，用于离线编辑和同步；不是应用的 `WIKI_DIR`。
 
 ## 覆盖层

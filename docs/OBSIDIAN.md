@@ -57,7 +57,6 @@ python -m app.cli git-status  # 只读：ahead/behind/dirty
 
 ```gitignore
 .DS_Store
-raw/
 index.md
 SCHEMA.md
 *.pdf
@@ -68,6 +67,7 @@ SCHEMA.md
 ```
 
 `log.md` 要跟踪（它是共享历史）；`index.md` / `SCHEMA.md` 由应用重建，不跟踪。
+`raw/` 里的 Markdown 来源默认也跟踪，跟着页面一起同步；大文件按需换 LFS 或单独 rsync。
 同步脚本会自动补齐 `.gitignore` / `.gitattributes`，并把旧 vault 里误跟踪的
 `index.md` / `SCHEMA.md` 从索引移除（文件留在磁盘）。
 

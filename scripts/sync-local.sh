@@ -51,7 +51,7 @@ git -C "$VAULT" remote get-url "$REMOTE" >/dev/null 2>&1 || die "没有 remote�
 
 LOCKDIR="$VAULT/.git/openllmwiki-sync.lock.d"
 if ! mkdir "$LOCKDIR" 2>/dev/null; then
-  die "另一个同步正在进行（锁：$LOCKDIR）"
+  die "另一个同步正在进行（锁：${LOCKDIR}）"
 fi
 trap 'rmdir "$LOCKDIR" 2>/dev/null || true' EXIT
 
@@ -74,13 +74,13 @@ git -C "$VAULT" fetch "$REMOTE" "+refs/heads/$BRANCH:refs/remotes/$REMOTE/$BRANC
 if [ "$STATUS" = "1" ]; then
   counts="$(git -C "$VAULT" rev-list --left-right --count "$REMOTE/$BRANCH"...HEAD)"
   echo "本地 $VAULT"
-  echo "远端 $REMOTE/$BRANCH：落后 $(echo "$counts" | awk '{print $1}') / 领先 $(echo "$counts" | awk '{print $2}')"
+  echo "远端 ${REMOTE}/${BRANCH}：落后 $(echo "$counts" | awk '{print $1}') / 领先 $(echo "$counts" | awk '{print $2}')"
   git -C "$VAULT" status --short
   exit 0
 fi
 
 if [ "$DRY" = "1" ]; then
-  echo "dry-run：将提交本地改动、pull --rebase、push 到 $REMOTE/$BRANCH。"
+  echo "dry-run：将提交本地改动、pull --rebase、push 到 ${REMOTE}/${BRANCH}。"
   git -C "$VAULT" status --short
   exit 0
 fi
@@ -118,4 +118,4 @@ if [ -x "$PY" ]; then
     >/dev/null 2>&1 || echo "提示：本地 index 重建失败（不影响已推送的页面）" >&2
 fi
 
-echo "完成：$(git -C "$VAULT" rev-parse --short HEAD) → $REMOTE/$BRANCH"
+echo "完成：$(git -C "$VAULT" rev-parse --short HEAD) → ${REMOTE}/${BRANCH}"
