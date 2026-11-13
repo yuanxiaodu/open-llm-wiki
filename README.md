@@ -13,6 +13,7 @@ An open-source, self-hosted knowledge base maintained by an AI agent. Chat with 
 
 - **智能体维护 wiki**：`read` / `search` / `write_page` / `edit_page` / `lint` 等工具，写页自动维护 `index.md` / `log.md` 并提交 Git；`SCHEMA.md` 是 wiki 自己的 schema，跟页面一起跟踪、同步。
 - **标准 git 同步**：服务器每个回合开始 `pull`、结束 `push`；本地 vault 由一句话触发 `scripts/sync-local.sh`（commit → pull --rebase → push）。冲突停在人面前，不 force push。
+- **管理员手动同步**：`/wiki` 索引页有「同步 wiki」按钮（`POST /api/wiki/sync`），本地 push 后可立即拉取并重建 index/检索。
 - **多来源摄入**：PDF、Word、PPT、Excel、图片、网页、粘贴文字；长文档走后台分块编译（`ingest_document`）。
 - **多用户**：登录、邀请注册、管理员、只读/建设权限、对话可见范围。
 - **SSE 流式对话**：工具事件、断线续读、消息落库。

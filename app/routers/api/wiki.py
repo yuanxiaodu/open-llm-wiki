@@ -40,6 +40,7 @@ from ...config import settings
 from ...deps import Conn, RequiredAdmin, RequiredUser
 from ...services import access
 from ...services import chat as chat_service
+from ...services import git_sync
 from ...wiki import repo, store
 
 router = APIRouter()
@@ -190,6 +191,19 @@ def pages(conn: sqlite3.Connection = Conn, user=RequiredUser):
 def index_file(conn: sqlite3.Connection = Conn, user=RequiredUser):
     """自动生成的索引正文（index.md）。"""
     return _special("index")
+
+
+@router.post("/api/wiki/sync")
+def sync_wiki(conn: sqlite3.Connection = Conn, user=RequiredAdmin):
+    """管理员手动同步：从远端 pull 最新 wiki，并重建 index/FTS。
+
+    页面读取本身不会触发 Git 网络操作；服务器只在智能体回合开始/结束时自动 pull。
+    这个入口供管理员在本地 push 后立即把页面拉到服务器。
+    """
+    report = git_sync.pull(conn, reason="manual")
+    if not report.get("ok"):
+        raise HTTPException(409, report.get("error") or "wiki 同步失败")
+    return report
 
 
 @router.get("/api/wiki/schema")

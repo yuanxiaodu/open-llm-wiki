@@ -74,3 +74,15 @@ scripts/sync-local.sh -m "<本批说明>"
 - `index.md`：标准合并；服务端 pull 后只补缺页/去 ghost，不整体重建。
 - `SCHEMA.md`：标准合并；冲突停下，人工/agent 解决。
 - 永不 force push；本地提交始终留在历史里。
+
+## 管理员手动同步
+
+服务器只在智能体回合开始/结束时自动 `pull`；本地 push 后，`/wiki` 不会立即变化。
+
+管理员可以在 `/wiki` 索引页点「同步 wiki」，对应：
+
+```http
+POST /api/wiki/sync
+```
+
+服务端执行 `git pull --rebase`，随后重建 index 与全文检索。普通成员/匿名无权调用。

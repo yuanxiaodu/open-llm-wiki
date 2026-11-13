@@ -408,6 +408,16 @@ export interface paths {
     /** Source Text */
     get: operations["source_text_api_wiki_source_get"];
   };
+  "/api/wiki/sync": {
+    /**
+     * Sync Wiki
+     * @description 管理员手动同步：从远端 pull 最新 wiki，并重建 index/FTS。
+     *
+     * 页面读取本身不会触发 Git 网络操作；服务器只在智能体回合开始/结束时自动 pull。
+     * 这个入口供管理员在本地 push 后立即把页面拉到服务器。
+     */
+    post: operations["sync_wiki_api_wiki_sync_post"];
+  };
   "/api/wiki/{path}": {
     /**
      * Page
@@ -1773,6 +1783,23 @@ export interface operations {
       422: {
         content: {
           "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  /**
+   * Sync Wiki
+   * @description 管理员手动同步：从远端 pull 最新 wiki，并重建 index/FTS。
+   *
+   * 页面读取本身不会触发 Git 网络操作；服务器只在智能体回合开始/结束时自动 pull。
+   * 这个入口供管理员在本地 push 后立即把页面拉到服务器。
+   */
+  sync_wiki_api_wiki_sync_post: {
+    responses: {
+      /** @description Successful Response */
+      200: {
+        content: {
+          "application/json": unknown;
         };
       };
     };

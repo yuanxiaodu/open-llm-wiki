@@ -56,6 +56,20 @@ def test_anonymous_wiki_routes_are_401(client):
         resp = client.get(path)
         assert resp.status_code == 401, path
         assert resp.json()["error"], path
+    assert client.post("/api/wiki/sync").status_code == 401
+
+
+def test_wiki_sync_is_admin_only(client, admin):
+    """手动同步只给管理员；测试 vault 没 remote 时返回 skipped，仍算成功。"""
+    resp = client.post("/api/wiki/sync")
+    assert resp.status_code == 200, resp.text
+    report = resp.json()
+    assert report["ok"] is True
+    assert report.get("skipped") == "no-remote"
+
+
+def test_wiki_sync_rejects_member(client, member_login):
+    assert client.post("/api/wiki/sync").status_code == 403
 
 
 def test_create_read_list_page(client, admin, conn, tmp_wiki):

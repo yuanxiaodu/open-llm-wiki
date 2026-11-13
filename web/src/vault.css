@@ -435,6 +435,17 @@
   overflow: hidden;
 }
 
+.vault-sync-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 36px 0;
+}
+
+.vault-sync-bar .vault-sub {
+  margin: 0;
+}
+
 .vault-scroll {
   height: 100%;
   overflow: auto;

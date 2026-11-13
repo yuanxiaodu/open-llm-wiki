@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useOutletContext } from "react-router-dom";
-import { ApiError, apiGet, errText } from "../api.ts";
+import { ApiError, apiGet, apiPost, errText } from "../api.ts";
 import { MarkdownBody } from "../components/MarkdownBody.tsx";
 import { useSiteConfig } from "../site.ts";
+import { useIdentity } from "../useIdentity.ts";
 import {
   formatStamp,
   normalizeWikiIndex,
@@ -49,12 +50,24 @@ function fallbackList(pages: WikiPageMeta[], type_labels: Record<string, string>
   );
 }
 
+interface WikiSyncReport {
+  ok: boolean;
+  skipped?: string;
+  error?: string;
+  pulled?: boolean;
+  behind?: number;
+}
+
 export function WikiIndex() {
   const { type_labels } = useSiteConfig();
+  const me = useIdentity();
+  const canSync = me?.role === "admin";
   const { pages, loading: pagesLoading, error: pagesError, reload } =
     useOutletContext<WikiOutlet>();
 
   const [doc, setDoc] = useState<WikiIndexDoc | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const seq = useRef(0);
@@ -78,6 +91,42 @@ export function WikiIndex() {
     }
   }, []);
 
+  const syncWiki = useCallback(async () => {
+    setSyncing(true);
+    setSyncMsg("");
+    try {
+      const report = await apiPost<WikiSyncReport>("/api/wiki/sync");
+      if (report.skipped) {
+        setSyncMsg(report.skipped === "no-remote" ? "没有配置远端，跳过同步" : `同步跳过：${report.skipped}`);
+      } else if (report.pulled) {
+        setSyncMsg(`已拉取 ${report.behind ?? 0} 个提交`);
+      } else {
+        setSyncMsg("已是最新");
+      }
+      reload();
+      await loadIndex();
+    } catch (e) {
+      setSyncMsg(errText(e, "同步没做成"));
+    } finally {
+      setSyncing(false);
+    }
+  }, [loadIndex, reload]);
+
+  const syncBar = canSync ? (
+    <div className="vault-sync-bar">
+      <button
+        type="button"
+        className="btn"
+        onClick={() => void syncWiki()}
+        disabled={syncing}
+        title="从远端拉取最新 wiki，并刷新本页目录"
+      >
+        {syncing ? "同步中…" : "同步 wiki"}
+      </button>
+      {syncMsg !== "" && <span className="vault-sub" role="status">{syncMsg}</span>}
+    </div>
+  ) : null;
+
   useEffect(() => {
     void loadIndex();
     return () => {
@@ -88,6 +137,7 @@ export function WikiIndex() {
   if (loading && doc === null && pages.length === 0) {
     return (
       <div className="vault-scroll">
+        {syncBar}
         <p className="vault-state" role="status">
           wiki 索引加载中…
         </p>
@@ -99,6 +149,7 @@ export function WikiIndex() {
   if (doc !== null) {
     return (
       <div className="vault-scroll">
+        {syncBar}
         <article className="vault-index wiki-index">
           <div className="wbody">
             <MarkdownBody markdown={prepareWikiBody(doc.body_md, wikilinksFromPages(pages))} />
@@ -112,6 +163,7 @@ export function WikiIndex() {
   if (pages.length > 0) {
     return (
       <div className="vault-scroll">
+        {syncBar}
         <article className="vault-index wiki-index">
           <header>
             <h1>wiki 索引</h1>
@@ -126,6 +178,7 @@ export function WikiIndex() {
   if (pagesLoading) {
     return (
       <div className="vault-scroll">
+        {syncBar}
         <p className="vault-state" role="status">
           目录加载中…
         </p>
@@ -136,6 +189,7 @@ export function WikiIndex() {
   if (pagesError !== "" || error !== "") {
     return (
       <div className="vault-scroll">
+        {syncBar}
         <div className="vault-error">
           <div className="banner err" role="alert">
             {pagesError || error}
@@ -159,6 +213,7 @@ export function WikiIndex() {
 
   return (
     <div className="vault-scroll">
+      {syncBar}
       <div className="vault-empty">
         <h1>还没有页面</h1>
         <p>

@@ -1842,6 +1842,23 @@
         "summary": "Source Text"
       }
     },
+    "/api/wiki/sync": {
+      "post": {
+        "description": "管理员手动同步：从远端 pull 最新 wiki，并重建 index/FTS。\n\n页面读取本身不会触发 Git 网络操作；服务器只在智能体回合开始/结束时自动 pull。\n这个入口供管理员在本地 push 后立即把页面拉到服务器。",
+        "operationId": "sync_wiki_api_wiki_sync_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Sync Wiki"
+      }
+    },
     "/api/wiki/{path}": {
       "get": {
         "description": "一页的全文：store.get_page 的字段透传（含引注来源、wikilinks、backlinks）。\n\n引注来源脱敏（2026-10-30）：对话可见范围是 `own` 时，来源会话当前不可见的 message\n引注，其 who/session_title/session_id 被抹成 None 并标 session_visible=False；逐字\nquote 与 wiki 正文不动（知识库是共享的，限制的是会话本身）。上传材料来源不受影响。",
